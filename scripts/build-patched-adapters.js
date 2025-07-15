@@ -91,21 +91,22 @@ if (existsSync(cloudflareDistDir)) {
     process.exit(1)
 }
 
-// Step 5: Copy patched source files to our src directory for building
+// Step 5: Copy patched source files to our package directories for building
 console.log('📂 Copying patched source files...')
 
-const srcAdaptersDir = join(rootDir, 'src/adapters/patched')
+const nodePackageAdapterDir = join(rootDir, 'packages/node/src/adapter')
+const cloudflarePackageAdapterDir = join(rootDir, 'packages/cloudflare/src/adapter')
 
 try {
-    // Ensure target directory exists
-    if (existsSync(srcAdaptersDir)) {
-        rmSync(srcAdaptersDir, { recursive: true })
+    // Clean and prepare node package adapter directory
+    if (existsSync(nodePackageAdapterDir)) {
+        rmSync(nodePackageAdapterDir, { recursive: true })
     }
-    mkdirSync(srcAdaptersDir, { recursive: true })
+    mkdirSync(nodePackageAdapterDir, { recursive: true })
     
     // Copy node adapter source
     const nodeSrcDir = join(astroUpstreamDir, 'packages/integrations/node/src')
-    const nodeTargetDir = join(srcAdaptersDir, 'node')
+    const nodeTargetDir = nodePackageAdapterDir
     
     if (existsSync(nodeSrcDir)) {
         cpSync(nodeSrcDir, nodeTargetDir, { recursive: true })
@@ -119,14 +120,14 @@ try {
                 "from '@astrojs/internal-helpers/dist/fs.js'",
                 "from '@astrojs/internal-helpers/fs'"
             )
-            // Fix entrypoints to point to our patched versions
+            // Fix entrypoints to point to our new package structure
             content = content.replace(
-                'serverEntrypoint: \'@astrojs/node/server.js\'',
-                'serverEntrypoint: \'zastro-websockets/node/server.js\''
+                "serverEntrypoint: '@astrojs/node/server.js'",
+                "serverEntrypoint: 'zastro-websockets-node/server'"
             )
             content = content.replace(
-                'previewEntrypoint: \'@astrojs/node/preview.js\'',
-                'previewEntrypoint: \'zastro-websockets/node/preview.js\''
+                "previewEntrypoint: '@astrojs/node/preview.js'",
+                "previewEntrypoint: 'zastro-websockets-node/preview'"
             )
             fs.writeFileSync(indexFile, content)
         }
@@ -174,9 +175,15 @@ try {
         }
     }
     
+    // Clean and prepare cloudflare package adapter directory
+    if (existsSync(cloudflarePackageAdapterDir)) {
+        rmSync(cloudflarePackageAdapterDir, { recursive: true })
+    }
+    mkdirSync(cloudflarePackageAdapterDir, { recursive: true })
+    
     // Copy cloudflare adapter source (now with WebSocket support)
     const cloudflareSrcDir = join(astroUpstreamDir, 'packages/integrations/cloudflare/src')
-    const cloudflareTargetDir = join(srcAdaptersDir, 'cloudflare')
+    const cloudflareTargetDir = cloudflarePackageAdapterDir
     
     if (existsSync(cloudflareSrcDir)) {
         cpSync(cloudflareSrcDir, cloudflareTargetDir, { recursive: true })
@@ -187,16 +194,16 @@ try {
             const fs = await import('node:fs')
             let content = fs.readFileSync(cloudflareIndexFile, 'utf-8')
             
-            // Fix entrypoints to point to our patched versions  
+            // Fix entrypoints to point to our new package structure
             content = content.replace(
-                'serverEntrypoint: customWorkerEntryPoint ?? \'@astrojs/cloudflare/entrypoints/server.js\'',
-                'serverEntrypoint: customWorkerEntryPoint ?? \'zastro-websockets/cloudflare/server.js\''
+                "serverEntrypoint: customWorkerEntryPoint ?? '@astrojs/cloudflare/entrypoints/server.js'",
+                "serverEntrypoint: customWorkerEntryPoint ?? 'zastro-websockets-cloudflare/server'"
             )
             
             // Fix middleware entrypoint
             content = content.replace(
-                'entrypoint: \'@astrojs/cloudflare/entrypoints/middleware.js\'',
-                'entrypoint: \'zastro-websockets/cloudflare/middleware.js\''
+                "entrypoint: '@astrojs/cloudflare/entrypoints/middleware.js'",
+                "entrypoint: 'zastro-websockets-cloudflare/middleware'"
             )
             
             fs.writeFileSync(cloudflareIndexFile, content)
@@ -210,17 +217,52 @@ try {
             
             // Fix image service entrypoint
             content = content.replace(
-                'entrypoint: \'@astrojs/cloudflare/image-service\'',
-                'entrypoint: \'zastro-websockets/cloudflare/image-service\''
+                "entrypoint: '@astrojs/cloudflare/image-service'",
+                "entrypoint: 'zastro-websockets-cloudflare/image-service'"
             )
             
             // Fix image endpoint entrypoint
             content = content.replace(
-                'entrypoint: command === \'dev\' ? undefined : \'@astrojs/cloudflare/image-endpoint\'',
-                'entrypoint: command === \'dev\' ? undefined : \'zastro-websockets/cloudflare/image-endpoint\''
+                "entrypoint: command === 'dev' ? undefined : '@astrojs/cloudflare/image-endpoint'",
+                "entrypoint: command === 'dev' ? undefined : 'zastro-websockets-cloudflare/image-endpoint'"
             )
             
             fs.writeFileSync(imageConfigFile, content)
+        }
+        
+        // Copy entrypoints to the separate entrypoints directory
+        const entrypointsDir = join(rootDir, 'packages/cloudflare/src/entrypoints')
+        if (existsSync(entrypointsDir)) {
+            rmSync(entrypointsDir, { recursive: true })
+        }
+        mkdirSync(entrypointsDir, { recursive: true })
+        
+        const cloudflareEntrypointsDir = join(astroUpstreamDir, 'packages/integrations/cloudflare/src/entrypoints')
+        if (existsSync(cloudflareEntrypointsDir)) {
+            cpSync(cloudflareEntrypointsDir, entrypointsDir, { recursive: true })
+            
+            // Fix import paths in entrypoints
+            const fs = await import('node:fs')
+            const serverFile = join(entrypointsDir, 'server.ts')
+            const imageServiceFile = join(entrypointsDir, 'image-service.ts')
+            
+            if (existsSync(serverFile)) {
+                let content = fs.readFileSync(serverFile, 'utf-8')
+                content = content.replace(
+                    "import { handle } from '../utils/handler.js';",
+                    "import { handle } from '../adapter/utils/handler.js';"
+                )
+                fs.writeFileSync(serverFile, content)
+            }
+            
+            if (existsSync(imageServiceFile)) {
+                let content = fs.readFileSync(imageServiceFile, 'utf-8')
+                content = content.replace(
+                    "import { isRemoteAllowed } from '../utils/assets.js';",
+                    "import { isRemoteAllowed } from '../adapter/utils/assets.js';"
+                )
+                fs.writeFileSync(imageServiceFile, content)
+            }
         }
         
         console.log('  ✅ Cloudflare adapter source copied and fixed')
@@ -237,10 +279,87 @@ try {
     process.exit(1)
 }
 
+// Step 6: Copy TypeScript declaration files from upstream
+console.log('📝 Copying TypeScript declaration files...')
+
+try {
+    // Copy Node.js TypeScript declarations
+    const nodeUpstreamDistDir = join(astroUpstreamDir, 'packages/integrations/node/dist')
+    const nodePackageDistDir = join(rootDir, 'packages/node/dist')
+    
+    if (existsSync(nodeUpstreamDistDir)) {
+        const nodeTypeFiles = [
+            'index.d.ts',
+            'preview.d.ts', 
+            'server.d.ts',
+            'websocket/websocket.d.ts',
+            'websocket/serve-websocket.d.ts'
+        ]
+        
+        for (const typeFile of nodeTypeFiles) {
+            const srcFile = join(nodeUpstreamDistDir, typeFile)
+            const destFile = join(nodePackageDistDir, 'adapter', typeFile)
+            
+            if (existsSync(srcFile)) {
+                const destDir = dirname(destFile)
+                if (!existsSync(destDir)) {
+                    mkdirSync(destDir, { recursive: true })
+                }
+                cpSync(srcFile, destFile)
+            }
+        }
+    }
+    
+    // Copy Cloudflare TypeScript declarations
+    const cloudflareUpstreamDistDir = join(astroUpstreamDir, 'packages/integrations/cloudflare/dist')
+    const cloudflarePackageDistDir = join(rootDir, 'packages/cloudflare/dist')
+    
+    if (existsSync(cloudflareUpstreamDistDir)) {
+        const cloudflareTypeFiles = [
+            'index.d.ts',
+            'entrypoints/server.d.ts',
+            'entrypoints/image-endpoint.d.ts',
+            'entrypoints/image-service.d.ts',
+            'entrypoints/middleware.d.ts'
+        ]
+        
+        for (const typeFile of cloudflareTypeFiles) {
+            const srcFile = join(cloudflareUpstreamDistDir, typeFile)
+            const destFile = join(cloudflarePackageDistDir, typeFile)
+            
+            if (existsSync(srcFile)) {
+                const destDir = dirname(destFile)
+                if (!existsSync(destDir)) {
+                    mkdirSync(destDir, { recursive: true })
+                }
+                cpSync(srcFile, destFile)
+            }
+        }
+        
+        // Also copy adapter index types
+        const adapterIndexTypes = join(cloudflareUpstreamDistDir, 'index.d.ts')
+        const adapterDestTypes = join(cloudflarePackageDistDir, 'adapter/index.d.ts')
+        
+        if (existsSync(adapterIndexTypes)) {
+            const adapterDestDir = dirname(adapterDestTypes)
+            if (!existsSync(adapterDestDir)) {
+                mkdirSync(adapterDestDir, { recursive: true })
+            }
+            cpSync(adapterIndexTypes, adapterDestTypes)
+        }
+    }
+    
+    console.log('  ✅ TypeScript declaration files copied')
+    
+} catch (error) {
+    console.error('❌ Error copying TypeScript declaration files:', error.message)
+    process.exit(1)
+}
+
 console.log('🎉 Patched adapters built successfully!')
 console.log('')
 console.log('📋 Available adapters:')
-console.log('   • Node.js: import node from "zastro-websockets/node"')
-console.log('   • Cloudflare: import cloudflare from "zastro-websockets/cloudflare"')
+console.log('   • Node.js: import node from "zastro-websockets-node"')
+console.log('   • Cloudflare: import cloudflare from "zastro-websockets-cloudflare"')
 console.log('')
 console.log('🚀 Ready to publish!')

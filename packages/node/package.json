@@ -1,0 +1,104 @@
+{
+  "name": "zastro-websockets-node",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Use WebSockets in your Astro SSR Apps with Node.js",
+  "license": "MIT",
+  "author": "Zach Handley",
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "astro-adapter",
+    "websocket",
+    "ssr",
+    "node"
+  ],
+  "homepage": "https://github.com/zachhandley/zastro-websockets",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zachhandley/zastro-websockets.git",
+    "directory": "packages/node"
+  },
+  "bugs": {
+    "url": "https://github.com/zachhandley/zastro-websockets/issues"
+  },
+  "main": "./dist/adapter/index.js",
+  "types": "./dist/adapter/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/adapter/index.d.ts",
+      "import": "./dist/adapter/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter/index.d.ts",
+      "import": "./dist/adapter/index.js"
+    },
+    "./server": {
+      "types": "./dist/adapter/server.d.ts",
+      "import": "./dist/adapter/server.js"
+    },
+    "./preview": {
+      "types": "./dist/adapter/preview.d.ts",
+      "import": "./dist/adapter/preview.js"
+    },
+    "./websocket/dev-middleware": {
+      "types": "./dist/websocket/dev-middleware.d.ts",
+      "import": "./dist/websocket/dev-middleware.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@astrojs/internal-helpers": "^0.6.1",
+    "@astrojs/underscore-redirects": "^1.0.0",
+    "bufferutil": "^4.0.8",
+    "send": "^1.1.0",
+    "server-destroy": "^1.0.1",
+    "tinyglobby": "^0.2.13",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.12"
+  },
+  "devDependencies": {
+    "@types/send": "^0.17.4",
+    "@types/server-destroy": "^1.0.4",
+    "astro": "^5.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "astro": "^4.0.0 || ^5.0.0",
+    "vite": "^6.0.0",
+    "ws": "^8.0.0",
+    "@types/ws": "^8.0.0",
+    "bufferutil": "^4.0.0",
+    "send": "^1.0.0",
+    "server-destroy": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    },
+    "@types/ws": {
+      "optional": true
+    },
+    "bufferutil": {
+      "optional": true
+    },
+    "send": {
+      "optional": true
+    },
+    "server-destroy": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

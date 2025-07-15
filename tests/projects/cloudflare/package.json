@@ -11,6 +11,6 @@
   "dependencies": {
     "astro": "^5.11.1",
     "vite": "^7.0.4",
-    "zastro-websockets": "file:../../../"
+    "zastro-websockets-cloudflare": "workspace:*"
   }
 }

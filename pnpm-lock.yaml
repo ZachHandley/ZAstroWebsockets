@@ -7,6 +7,43 @@ settings:
 importers:
 
   .:
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(postcss@8.5.6)(typescript@5.8.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+
+  packages/cloudflare:
+    dependencies:
+      '@astrojs/internal-helpers':
+        specifier: ^0.6.1
+        version: 0.6.1
+      '@astrojs/underscore-redirects':
+        specifier: ^1.0.0
+        version: 1.0.0
+      tinyglobby:
+        specifier: ^0.2.13
+        version: 0.2.14
+      vite:
+        specifier: ^6.0.0
+        version: 6.3.5(@types/node@24.0.13)
+    devDependencies:
+      astro:
+        specifier: ^5.0.0
+        version: 5.11.1(@types/node@24.0.13)(rollup@4.45.0)(typescript@5.8.3)
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(postcss@8.5.6)(typescript@5.8.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.8.3
+      wrangler:
+        specifier: ^4.0.0
+        version: 4.24.3(bufferutil@4.0.9)
+
+  packages/node:
     dependencies:
       '@astrojs/internal-helpers':
         specifier: ^0.6.1
@@ -15,16 +52,16 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       '@types/ws':
-        specifier: ^8.0.0
+        specifier: ^8.5.12
         version: 8.18.1
       bufferutil:
-        specifier: ^4.0.0
+        specifier: ^4.0.8
         version: 4.0.9
       send:
-        specifier: ^1.0.0
+        specifier: ^1.1.0
         version: 1.2.0
       server-destroy:
-        specifier: ^1.0.0
+        specifier: ^1.0.1
         version: 1.0.1
       tinyglobby:
         specifier: ^0.2.13
@@ -32,11 +69,8 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.3.5(@types/node@24.0.13)
-      wrangler:
-        specifier: ^4.0.0
-        version: 4.24.3(bufferutil@4.0.9)
       ws:
-        specifier: ^8.0.0
+        specifier: ^8.18.0
         version: 8.18.3(bufferutil@4.0.9)
     devDependencies:
       '@types/send':
@@ -54,6 +88,27 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.8.3
+
+  tests/projects/cloudflare:
+    dependencies:
+      astro:
+        specifier: ^5.11.1
+        version: 5.11.1(@types/node@24.0.13)(rollup@4.45.0)(typescript@5.8.3)
+      vite:
+        specifier: ^7.0.4
+        version: 7.0.4(@types/node@24.0.13)
+      zastro-websockets-cloudflare:
+        specifier: workspace:*
+        version: link:../../../packages/cloudflare
+
+  tests/projects/node:
+    dependencies:
+      astro:
+        specifier: ^5.11.1
+        version: 5.11.1(@types/node@24.0.13)(rollup@4.45.0)(typescript@5.8.3)
+      zastro-websockets-node:
+        specifier: workspace:*
+        version: link:../../../packages/node
 
 packages:
 
@@ -1993,6 +2048,46 @@ packages:
       sass-embedded: '*'
       stylus: '*'
       sugarss: '*'
+      terser: ^5.16.0
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      jiti:
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+      tsx:
+        optional: true
+      yaml:
+        optional: true
+
+  vite@7.0.4:
+    resolution: {integrity: sha512-SkaSguuS7nnmV7mfJ8l81JGBFV7Gvzp8IzgE8A8t23+AxuNX61Q5H1Tpz5efduSN7NHC8nQXD3sKQKZAu5mNEA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^20.19.0 || >=22.12.0
+      jiti: '>=1.21.0'
+      less: ^4.0.0
+      lightningcss: ^1.21.0
+      sass: ^1.70.0
+      sass-embedded: ^1.70.0
+      stylus: '>=0.54.8'
+      sugarss: ^5.0.0
       terser: ^5.16.0
       tsx: ^4.8.1
       yaml: ^2.4.2
@@ -4245,6 +4340,18 @@ snapshots:
       vfile-message: 4.0.2
 
   vite@6.3.5(@types/node@24.0.13):
+    dependencies:
+      esbuild: 0.25.6
+      fdir: 6.4.6(picomatch@4.0.2)
+      picomatch: 4.0.2
+      postcss: 8.5.6
+      rollup: 4.45.0
+      tinyglobby: 0.2.14
+    optionalDependencies:
+      '@types/node': 24.0.13
+      fsevents: 2.3.3
+
+  vite@7.0.4(@types/node@24.0.13):
     dependencies:
       esbuild: 0.25.6
       fdir: 6.4.6(picomatch@4.0.2)

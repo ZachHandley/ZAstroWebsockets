@@ -10,6 +10,6 @@
   },
   "dependencies": {
     "astro": "^5.11.1",
-    "zastro-websockets": "file:../../../"
+    "zastro-websockets-node": "workspace:*"
   }
 }
