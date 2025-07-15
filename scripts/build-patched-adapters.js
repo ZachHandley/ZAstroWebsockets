@@ -193,7 +193,34 @@ try {
                 'serverEntrypoint: customWorkerEntryPoint ?? \'zastro-websockets/cloudflare/server.js\''
             )
             
+            // Fix middleware entrypoint
+            content = content.replace(
+                'entrypoint: \'@astrojs/cloudflare/entrypoints/middleware.js\'',
+                'entrypoint: \'zastro-websockets/cloudflare/middleware.js\''
+            )
+            
             fs.writeFileSync(cloudflareIndexFile, content)
+        }
+        
+        // Fix image-config.ts entrypoints
+        const imageConfigFile = join(cloudflareTargetDir, 'utils/image-config.ts')
+        if (existsSync(imageConfigFile)) {
+            const fs = await import('node:fs')
+            let content = fs.readFileSync(imageConfigFile, 'utf-8')
+            
+            // Fix image service entrypoint
+            content = content.replace(
+                'entrypoint: \'@astrojs/cloudflare/image-service\'',
+                'entrypoint: \'zastro-websockets/cloudflare/image-service\''
+            )
+            
+            // Fix image endpoint entrypoint
+            content = content.replace(
+                'entrypoint: command === \'dev\' ? undefined : \'@astrojs/cloudflare/image-endpoint\'',
+                'entrypoint: command === \'dev\' ? undefined : \'zastro-websockets/cloudflare/image-endpoint\''
+            )
+            
+            fs.writeFileSync(imageConfigFile, content)
         }
         
         console.log('  ✅ Cloudflare adapter source copied and fixed')
