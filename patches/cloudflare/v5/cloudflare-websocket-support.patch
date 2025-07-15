@@ -1,0 +1,12 @@
+diff --git a/packages/integrations/cloudflare/package.json b/packages/integrations/cloudflare/package.json
+index 2b4c3e560..4ffdb53a9 100644
+--- a/packages/integrations/cloudflare/package.json
++++ b/packages/integrations/cloudflare/package.json
+@@ -24,6 +24,7 @@
+     "./image-service": "./dist/entrypoints/image-service.js",
+     "./image-endpoint": "./dist/entrypoints/image-endpoint.js",
+     "./handler": "./dist/utils/handler.js",
++    "./websocket": "./dist/websocket/index.js",
+     "./package.json": "./package.json"
+   },
+   "files": [

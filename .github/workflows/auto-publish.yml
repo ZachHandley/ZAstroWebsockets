@@ -1,0 +1,162 @@
+name: Auto Build & Publish on Submodule Update
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Check for submodule updates daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  check-submodule:
+    runs-on: ubuntu-latest
+    outputs:
+      should-publish: ${{ steps.check.outputs.should-publish }}
+      astro-version: ${{ steps.check.outputs.astro-version }}
+      new-version: ${{ steps.check.outputs.new-version }}
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check submodule changes and version
+        id: check
+        run: |
+          # Get current submodule commit
+          CURRENT_COMMIT=$(git submodule status astro-upstream | awk '{print $1}' | sed 's/^+//')
+          echo "Current submodule commit: $CURRENT_COMMIT"
+          
+          # Get Astro version from submodule package.json
+          cd astro-upstream
+          ASTRO_VERSION=$(node -p "require('./package.json').version")
+          echo "Astro version: $ASTRO_VERSION"
+          cd ..
+          
+          # Get current package version
+          CURRENT_PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Current package version: $CURRENT_PKG_VERSION"
+          
+          # Generate new version based on Astro version + submodule commit
+          SHORT_COMMIT=${CURRENT_COMMIT:0:7}
+          NEW_VERSION="${ASTRO_VERSION}-${SHORT_COMMIT}"
+          echo "Proposed new version: $NEW_VERSION"
+          
+          # Check if we need to publish (version changed)
+          if [ "$CURRENT_PKG_VERSION" != "$NEW_VERSION" ]; then
+            echo "Version changed from $CURRENT_PKG_VERSION to $NEW_VERSION"
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $CURRENT_PKG_VERSION"
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "astro-version=$ASTRO_VERSION" >> $GITHUB_OUTPUT
+          echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+  build-and-publish:
+    needs: check-submodule
+    if: needs.check-submodule.outputs.should-publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Update version in package.json
+        run: |
+          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
+          npm version "$NEW_VERSION" --no-git-tag-version
+          echo "Updated package.json to version $NEW_VERSION"
+
+      - name: Update changelog
+        run: |
+          ASTRO_VERSION="${{ needs.check-submodule.outputs.astro-version }}"
+          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
+          TODAY=$(date +%Y-%m-%d)
+          
+          # Create changelog entry
+          cat > temp_changelog.md << EOF
+          # Changelog
+          
+          ## [${NEW_VERSION}] - ${TODAY}
+          
+          ### Updated
+          - Updated to Astro ${ASTRO_VERSION}
+          - Synced with upstream Astro repository
+          
+          EOF
+          
+          # Append existing changelog if it exists
+          if [ -f CHANGELOG.md ]; then
+            tail -n +2 CHANGELOG.md >> temp_changelog.md
+          fi
+          
+          mv temp_changelog.md CHANGELOG.md
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: Run type check
+        run: pnpm run type-check
+
+      - name: Commit version updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json CHANGELOG.md
+          git commit -m "chore: bump version to ${{ needs.check-submodule.outputs.new-version }}" || exit 0
+
+      - name: Create Git tag
+        run: |
+          git tag "v${{ needs.check-submodule.outputs.new-version }}"
+          git push origin "v${{ needs.check-submodule.outputs.new-version }}"
+
+      - name: Push changes
+        run: git push origin main
+
+      - name: Publish to npm
+        run: pnpm publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.check-submodule.outputs.new-version }}
+          release_name: Release v${{ needs.check-submodule.outputs.new-version }}
+          body: |
+            ## Changes
+            - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
+            - Synced with upstream Astro repository
+            
+            ## Installation
+            ```bash
+            npm install zastro-websockets@${{ needs.check-submodule.outputs.new-version }}
+            ```
+          draft: false
+          prerelease: false

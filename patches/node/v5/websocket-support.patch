@@ -1,0 +1,562 @@
+diff --git a/packages/integrations/node/package.json b/packages/integrations/node/package.json
+index 39a993467..af3d3d5fc 100644
+--- a/packages/integrations/node/package.json
++++ b/packages/integrations/node/package.json
+@@ -35,7 +35,8 @@
+   "dependencies": {
+     "@astrojs/internal-helpers": "workspace:*",
+     "send": "^1.2.0",
+-    "server-destroy": "^1.0.1"
++    "server-destroy": "^1.0.1",
++    "ws": "^8.18.0"
+   },
+   "peerDependencies": {
+     "astro": "^5.3.0"
+@@ -44,6 +45,7 @@
+     "@types/node": "^22.10.6",
+     "@types/send": "^0.17.4",
+     "@types/server-destroy": "^1.0.4",
++    "@types/ws": "^8.5.12",
+     "astro": "workspace:*",
+     "astro-scripts": "workspace:*",
+     "cheerio": "1.0.0",
+diff --git a/packages/integrations/node/src/index.ts b/packages/integrations/node/src/index.ts
+index 123456789..987654321 100644
+--- a/packages/integrations/node/src/index.ts
++++ b/packages/integrations/node/src/index.ts
+@@ -1,5 +1,5 @@
+ import { fileURLToPath } from 'node:url';
+-import { writeJson } from '@astrojs/internal-helpers/fs';
++import { writeJson } from '@astrojs/internal-helpers/fs';
+ import type {
+ 	AstroAdapter,
+ 	AstroConfig,
+diff --git a/packages/integrations/node/src/serve-app.ts b/packages/integrations/node/src/serve-app.ts
+index 72b4e0fd6..7c397de6b 100644
+--- a/packages/integrations/node/src/serve-app.ts
++++ b/packages/integrations/node/src/serve-app.ts
+@@ -20,7 +20,7 @@ export function createAppHandler(app: NodeApp): RequestHandler {
+ 		console.error(reason);
+ 	});
+ 
+-	return async (req, res, next, locals) => {
++	return async (req, res, next, locals = {}) => {
+ 		let request: Request;
+ 		try {
+ 			request = NodeApp.createRequest(req);
+@@ -31,7 +31,19 @@ export function createAppHandler(app: NodeApp): RequestHandler {
+ 			res.end('Internal Server Error');
+ 			return;
+ 		}
+-
++		/**
++		 * An upgrade request will be handled by a listener attached to the `upgrade` event,
++		 * which is the returned function from createWebsocketHandler().
++		 *
++		 * The fact that a request is being handled by this function, a listener for the
++		 * `request` event, means that the request was not an upgrade request.
++		 */
++		Object.assign(locals, {
++			isUpgradeRequest: false,
++			upgradeWebSocket() {
++				throw new Error("The request must be an upgrade request to upgrade the connection to a WebSocket.")
++			}
++		})
+ 		const routeData = app.match(request);
+ 		if (routeData) {
+ 			const response = await als.run(request.url, () =>
+diff --git a/packages/integrations/node/src/standalone.ts b/packages/integrations/node/src/standalone.ts
+index 8ef4227a1..74f00e778 100644
+--- a/packages/integrations/node/src/standalone.ts
++++ b/packages/integrations/node/src/standalone.ts
+@@ -7,6 +7,7 @@ import enableDestroy from 'server-destroy';
+ import { logListeningOn } from './log-listening-on.js';
+ import { createAppHandler } from './serve-app.js';
+ import { createStaticHandler } from './serve-static.js';
++import { createWebsocketHandler } from "./websocket/serve-websocket.js";
+ import type { Options } from './types.js';
+ 
+ // Used to get Host Value at Runtime
+@@ -22,6 +23,8 @@ export default function standalone(app: NodeApp, options: Options) {
+ 	const host = process.env.HOST ?? hostOptions(options.host);
+ 	const handler = createStandaloneHandler(app, options);
+ 	const server = createServer(handler, host, port);
++	// Add WebSocket upgrade handler
++	server.server.on("upgrade", createWebsocketHandler(app))
+ 	server.server.listen(port, host);
+ 	if (process.env.ASTRO_NODE_LOGGING !== 'disabled') {
+ 		logListeningOn(app.getAdapterLogger(), server.server, host);
+diff --git a/packages/integrations/node/src/types.ts b/packages/integrations/node/src/types.ts
+index 4dae92243..33017d6a7 100644
+--- a/packages/integrations/node/src/types.ts
++++ b/packages/integrations/node/src/types.ts
+@@ -34,9 +34,9 @@ export interface Options extends UserOptions {
+ }
+ 
+ export type RequestHandler = (...args: RequestHandlerParams) => void | Promise<void>;
+-type RequestHandlerParams = [
++export type RequestHandlerParams = [
+ 	req: IncomingMessage,
+ 	res: ServerResponse,
+ 	next?: (err?: unknown) => void,
+-	locals?: object,
++	locals?: { [key: string]: any },
+ ];
+diff --git a/packages/integrations/node/src/websocket/attach.ts b/packages/integrations/node/src/websocket/attach.ts
+new file mode 100644
+index 000000000..13f601edb
+--- /dev/null
++++ b/packages/integrations/node/src/websocket/attach.ts
+@@ -0,0 +1,22 @@
++import type * as ws from "ws"
++import type { WebSocket } from "./websocket.js"
++
++// WeakMap to store private WebSocket instances
++const wsMap = new WeakMap<WebSocket, ws.WebSocket>()
++
++// Hidden attachment function
++const attacher: { attach: null | typeof attachImpl } = { attach: null }
++
++function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
++    if (wsMap.has(standard)) {
++        throw new Error("WebSocket already attached")
++    }
++    wsMap.set(standard, ws)
++}
++
++// Initialize the attacher
++attacher.attach = attachImpl
++
++export function attach(standard: WebSocket, ws: ws.WebSocket): void {
++    return attacher.attach?.(standard, ws)
++}
+\ No newline at end of file
+diff --git a/packages/integrations/node/src/websocket/dev-middleware.ts b/packages/integrations/node/src/websocket/dev-middleware.ts
+new file mode 100644
+index 000000000..8e2546bc8
+--- /dev/null
++++ b/packages/integrations/node/src/websocket/dev-middleware.ts
+@@ -0,0 +1,141 @@
++import { AsyncLocalStorage } from 'node:async_hooks'
++import * as ws from 'ws'
++
++// Type definitions for Vite dev server
++export interface ViteDevServer {
++  httpServer: import('node:http').Server
++  middlewares: {
++    stack: Array<{
++      handle: any
++    }>
++  }
++}
++
++// Type for Astro dev handler
++type AstroDevHandler = (
++  req: import('node:http').IncomingMessage,
++  res: import('node:http').ServerResponse,
++) => void
++
++// Global storage for upgrade requests
++const upgradeRequestStorage = new AsyncLocalStorage<[
++  wsServer: ws.WebSocketServer,
++  req: import('node:http').IncomingMessage,
++  socket: import('node:stream').Duplex,
++  head: Buffer
++]>()
++
++/**
++ * Development middleware for handling WebSocket upgrade requests
++ */
++export const onRequest = async function websocketDevMiddleware(
++  context: any,
++  next: () => Promise<Response>
++): Promise<Response> {
++  const upgradeRequest = upgradeRequestStorage.getStore()
++
++  // Non-upgrade request handling
++  if (upgradeRequest === undefined) {
++    // Check if this is a WebSocket upgrade request
++    const isUpgradeRequest = context.request.headers.get('upgrade') === 'websocket'
++
++    // Set up locals for non-upgrade requests
++    context.locals.isUpgradeRequest = isUpgradeRequest
++    context.locals.upgradeWebSocket = () => {
++      throw new Error('The request must be an upgrade request to upgrade the connection to a WebSocket.')
++    }
++
++    return next()
++  }
++
++  // This is an upgrade request - the actual handling happens in the upgrade event handler
++  return new Response(null, { status: 101 })
++}
++
++/**
++ * Set up WebSocket upgrade handling for Vite dev server
++ */
++export function handleUpgradeRequests(viteDevServer: ViteDevServer): void {
++  // Find the Astro dev handler in the middleware stack
++  const astroDevHandler = viteDevServer.middlewares.stack
++    .find((stackItem: any) =>
++      'name' in stackItem.handle && stackItem.handle.name === 'astroDevHandler'
++    )?.handle as AstroDevHandler
++
++  if (!astroDevHandler) {
++    console.warn('[node-websocket] Astro dev handler not found in Vite middleware stack')
++    return
++  }
++
++  // Create WebSocket server with noServer option
++  const wsServer = new ws.WebSocketServer({
++    noServer: true,
++    perMessageDeflate: false,
++    maxPayload: 64 * 1024 * 1024, // 64MB max payload
++  })
++
++  // Handle server lifecycle
++  wsServer.on('error', (error) => {
++    console.error('[node-websocket] WebSocket server error:', error)
++  })
++
++  // Get the HTTP server instance
++  const httpServer = viteDevServer.httpServer
++
++  if (!httpServer) {
++    console.warn('[node-websocket] No HTTP server found, WebSocket upgrade handling may not work')
++    return
++  }
++
++  // Set up upgrade event handler
++  httpServer.on('upgrade', (req, socket, head) => {
++    // Skip Vite HMR WebSocket connections
++    if (req.headers['sec-websocket-protocol'] === 'vite-hmr') {
++      return
++    }
++
++    // Run the upgrade request through AsyncLocalStorage
++    upgradeRequestStorage.run(
++      [wsServer, req, socket, head],
++      () => {
++        // Create a fake response object for the Astro handler
++        const fakeResponse = createFakeResponse()
++
++        // Call the Astro dev handler
++        astroDevHandler(req, fakeResponse)
++      }
++    )
++  })
++
++  // Clean up on server close
++  httpServer.on('close', () => {
++    wsServer.close()
++  })
++}
++
++/**
++ * Create a fake HTTP response object for upgrade handling
++ */
++function createFakeResponse(): import('node:http').ServerResponse {
++  return {
++    setHeader() {},
++    write() {},
++    writeHead() {},
++    end() {},
++    on() {},
++    once() {},
++    emit() { return false },
++    removeListener() { return this },
++    removeAllListeners() { return this },
++    getMaxListeners() { return 0 },
++    listenerCount() { return 0 },
++    listeners() { return [] },
++    rawListeners() { return [] },
++    addListener() { return this },
++    prependListener() { return this },
++    prependOnceListener() { return this },
++    headersSent: false,
++    statusCode: 200,
++    statusMessage: 'OK',
++  } as any as import('node:http').ServerResponse
++}
+\ No newline at end of file
+diff --git a/packages/integrations/node/src/websocket/response.ts b/packages/integrations/node/src/websocket/response.ts
+new file mode 100644
+index 000000000..e37080edd
+--- /dev/null
++++ b/packages/integrations/node/src/websocket/response.ts
+@@ -0,0 +1,32 @@
++import { pipeline } from "node:stream/promises"
++
++export class UpgradeResponse extends Response {
++    readonly status = 101
++
++    constructor() {
++        super(null, {
++            status: 101,
++            statusText: "Switching Protocols",
++            headers: {
++                "Upgrade": "websocket",
++                "Connection": "Upgrade"
++            }
++        })
++    }
++}
++
++export async function writeResponseToSocket(socket: import("node:stream").Duplex, response: Response) {
++    let head = `HTTP/1.1 ${response.status}`
++    if (response.statusText) head += ` ${response.statusText}`
++    head += `\r\n`
++
++    for (const [name, value] of response.headers) {
++        head += `${name}: ${value}\r\n`
++    }
++
++    socket.write(head + "\r\n")
++
++    if (response.body) {
++        await pipeline(response.clone().body!, socket)
++    }
++}
+\ No newline at end of file
+diff --git a/packages/integrations/node/src/websocket/serve-websocket.ts b/packages/integrations/node/src/websocket/serve-websocket.ts
+new file mode 100644
+index 000000000..22712ea0e
+--- /dev/null
++++ b/packages/integrations/node/src/websocket/serve-websocket.ts
+@@ -0,0 +1,47 @@
++import * as ws from "ws"
++import { NodeApp } from "astro/app/node"
++import { WebSocket } from "./websocket.js"
++import { attach } from "./attach.js"
++import { UpgradeResponse, writeResponseToSocket } from "./response.js"
++
++export type UpgradeHandler =
++    import("node:http").Server["on"] extends
++        (event: "upgrade", callback: infer UpgradeHandler) => unknown
++            ? UpgradeHandler
++            : never
++
++export function createWebsocketHandler(app: NodeApp): UpgradeHandler {
++    /**
++     * The websocket instance is created as soon as
++     * `locals.upgradeWebSocket()` is called. It gets
++     * attached to an actual connection once the app
++     * code returns a response.
++     *
++     * This map is used to keep track of the
++     * responses' associated websocket instance.
++     */
++    const responseToSocketMap = new WeakMap<Response, WebSocket>
++    const server = new ws.WebSocketServer({ noServer: true })
++
++    return async (req, socket, head) => {
++        const response = await app.render(NodeApp.createRequest(req), {
++            addCookieHeader: true,
++            locals: {
++                isUpgradeRequest: true,
++                upgradeWebSocket() {
++                    const socket = new WebSocket
++                    const response = new UpgradeResponse
++                    responseToSocketMap.set(response, socket)
++                    return { socket, response }
++                }
++            }
++        })
++
++        if (response instanceof UpgradeResponse) {
++            const websocket = responseToSocketMap.get(response)!
++            server.handleUpgrade(req, socket, head, ws => attach(websocket, ws))
++        } else {
++            await writeResponseToSocket(socket, response)
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/packages/integrations/node/src/websocket/websocket.ts b/packages/integrations/node/src/websocket/websocket.ts
+new file mode 100644
+index 000000000..00c8dd517
+--- /dev/null
++++ b/packages/integrations/node/src/websocket/websocket.ts
+@@ -0,0 +1,181 @@
++import type * as ws from "ws"
++
++type WebSocketInterface = globalThis.WebSocket
++
++// WeakMap to store private WebSocket instances
++const wsMap = new WeakMap<WebSocket, ws.WebSocket>()
++
++// To keep the internals hidden
++export const attacher: { attach: null | typeof attachImpl } = { attach: null }
++
++export class WebSocket extends EventTarget implements WebSocketInterface {
++
++    static readonly CONNECTING = 0 as const
++    static readonly OPEN       = 1 as const
++    static readonly CLOSING    = 2 as const
++    static readonly CLOSED     = 3 as const
++
++    get url() {
++        const ws = wsMap.get(this)
++        return ws?.url ?? ""
++    }
++
++    // ready state
++    declare readonly CONNECTING: 0
++    declare readonly OPEN      : 1
++    declare readonly CLOSING   : 2
++    declare readonly CLOSED    : 3
++
++    get readyState() {
++        const ws = wsMap.get(this)
++        return ws?.readyState ?? this.CONNECTING
++    }
++
++    get bufferedAmount() {
++        const ws = wsMap.get(this)
++        return ws?.bufferedAmount ?? 0
++    }
++
++    // networking
++    onopen : WebSocketInterface["onopen"]  = null
++    onerror: WebSocketInterface["onerror"] = null
++    onclose: WebSocketInterface["onclose"] = null
++
++    get extensions() {
++        const ws = wsMap.get(this)
++        return ws?.extensions ?? ""
++    }
++
++    get protocol() {
++        const ws = wsMap.get(this)
++        return ws?.protocol ?? ""
++    }
++
++    close() {
++        const ws = wsMap.get(this)
++        if (ws) ws.close()
++        else this.addEventListener("open", () => this.close(), { once: true })
++    }
++
++    // messaging
++    onmessage : WebSocketInterface["onmessage"] = null
++
++    get binaryType() {
++        const ws = wsMap.get(this)
++        return ws?.binaryType as "arraybuffer" | "blob" ?? "blob"
++    }
++
++    set binaryType(value: "arraybuffer" | "blob") {
++        const ws = wsMap.get(this)
++        if (ws) {
++            // @ts-expect-error `"blob"` is supported by `ws`
++            ws.binaryType = value
++        } else {
++            this.addEventListener("open", () => this.binaryType = value, { once: true })
++        }
++    }
++
++    send(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
++        const ws = wsMap.get(this)
++        if (data instanceof Blob) data.arrayBuffer().then(buffer => ws!.send(buffer))
++        else ws!.send(data)
++    }
++
++    static {
++        Object.assign(this.prototype, {
++            CONNECTING: 0,
++            OPEN      : 1,
++            CLOSING   : 2,
++            CLOSED    : 3
++        })
++
++        // Freeze the prototype and class to align the object shape with the spec
++        Object.freeze(this.prototype)
++        Object.freeze(this)
++
++        attacher.attach = attachImpl
++    }
++}
++
++function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
++    // Use a WeakMap to store private WebSocket instances
++    if (wsMap.has(standard)) {
++        throw new Error("WebSocket already attached")
++    }
++    wsMap.set(standard, ws)
++    init(standard, ws)
++}
++
++function init(standard: WebSocket, ws: ws.WebSocket) {
++    // set the binary type to `"blob"` to align with the browser default
++    // @ts-expect-error `"blob"` is supported by `ws`
++    ws.binaryType = "blob"
++
++    if (ws.readyState === ws.OPEN) {
++        const event = new Event("open")
++        standard.onopen?.(event)
++        standard.dispatchEvent(event)
++    }
++
++    ws.on("open", function onOpen() {
++        const event = new Event("open")
++        standard.onopen?.(event)
++        standard.dispatchEvent(event)
++    })
++
++    ws.on("message", function onMessage(data, isBinary) {
++        const event = new MessageEvent("message", { data: isBinary ? data : data.toString(), })
++        standard.onmessage?.(event)
++        standard.dispatchEvent(event)
++    })
++
++    ws.on("error", function onError(error) {
++        const event = new ErrorEvent(error, error.message)
++        standard.onerror?.(event)
++        standard.dispatchEvent(event)
++    })
++
++    ws.addEventListener("close", function onClose(ev) {
++        const event = new (globalThis.CloseEvent ?? CloseEvent)("close", ev)
++        standard.onclose?.(event)
++        standard.dispatchEvent(event)
++    })
++}
++
++export class ErrorEvent extends Event {
++    constructor(readonly error: Error, readonly message: string) {
++        super("error")
++    }
++}
++
++export class CloseEvent extends Event implements globalThis.CloseEvent {
++    readonly code: number
++    readonly reason: string
++    readonly wasClean: boolean
++
++    constructor(type: string, eventInitDict: CloseEventInit) {
++        super(type, eventInitDict)
++        this.code = eventInitDict.code ?? 0
++        this.reason = eventInitDict.reason ?? ""
++        this.wasClean = eventInitDict.wasClean ?? false
++    }
++}
++
++export function attach(standard: WebSocket, ws: ws.WebSocket): void {
++    return attacher.attach?.(standard, ws)
++}
++
++interface CloseEventInit extends EventInit {
++    code?: number
++    reason?: string
++    wasClean?: boolean
++}
++
++declare global {
++    namespace App {
++        interface Locals {
++            isUpgradeRequest?: boolean
++            upgradeWebSocket?: () => { socket: WebSocket, response: import("./response.js").UpgradeResponse }
++        }
++    }
++}
+\ No newline at end of file

@@ -1,0 +1,7 @@
+packages:
+  - "."
+
+onlyBuiltDependencies:
+  - bufferutil
+  - esbuild
+  - sharp

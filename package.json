@@ -1,0 +1,125 @@
+{
+  "name": "zastro-websockets",
+  "type": "module",
+  "description": "Use WebSockets in your Astro SSR Apps - Fork of astro-node-websocket with updated dependencies",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Zach Handley",
+  "keywords": [
+    "astro",
+    "astro-integration",
+    "astro-adapter",
+    "websocket",
+    "ssr",
+    "node",
+    "cloudflare"
+  ],
+  "homepage": "https://github.com/zachhandley/zastro-websockets",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zachhandley/zastro-websockets.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zachhandley/zastro-websockets/issues"
+  },
+  "files": [
+    "dist",
+    "patches",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./dist/types.js"
+    },
+    "./websocket": {
+      "types": "./src/websocket.ts",
+      "import": "./dist/websocket.js"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "import": "./dist/server.js"
+    },
+    "./ws": {
+      "types": "./src/ws.ts",
+      "import": "./dist/ws.js"
+    },
+    "./patch-utils": {
+      "types": "./src/patch-utils.ts",
+      "import": "./dist/patch-utils.js"
+    },
+    "./response": {
+      "types": "./src/response.ts",
+      "import": "./dist/response.js"
+    },
+    "./node": {
+      "types": "./src/adapters/patched/node/index.ts",
+      "import": "./dist/adapters/patched/node/index.js"
+    },
+    "./node/server.js": {
+      "types": "./src/adapters/patched/node/server.ts",
+      "import": "./dist/adapters/patched/node/server.js"
+    },
+    "./node/preview.js": {
+      "types": "./src/adapters/patched/node/preview.ts",
+      "import": "./dist/adapters/patched/node/preview.js"
+    },
+    "./node/websocket/dev-middleware.js": {
+      "types": "./src/adapters/patched/node/websocket/dev-middleware.ts",
+      "import": "./dist/adapters/patched/node/websocket/dev-middleware.js"
+    },
+    "./node/websocket/stats": {
+      "types": "./src/adapters/patched/node/websocket/stats.ts",
+      "import": "./dist/adapters/patched/node/websocket/stats.js"
+    },
+    "./node/websocket/connection-manager": {
+      "types": "./src/adapters/patched/node/websocket/connection-manager.ts",
+      "import": "./dist/adapters/patched/node/websocket/connection-manager.js"
+    },
+    "./cloudflare": {
+      "types": "./src/adapters/cloudflare-patched.ts",
+      "import": "./dist/adapters/cloudflare-patched.js"
+    }
+  },
+  "dependencies": {
+    "@astrojs/internal-helpers": "^0.6.1",
+    "@astrojs/underscore-redirects": "^0.1.0",
+    "@types/ws": "^8.5.12", 
+    "bufferutil": "^4.0.8",
+    "send": "^1.1.0",
+    "server-destroy": "^1.0.1",
+    "tinyglobby": "^0.2.13",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/send": "^0.17.4",
+    "@types/server-destroy": "^1.0.4",
+    "astro": "^5.0.0",
+    "typescript": "^5.0.0",
+    "tsup": "^8.0.0"
+  },
+  "peerDependencies": {
+    "astro": "^4.0.0 || ^5.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:adapters && tsup",
+    "build:adapters": "node scripts/build-patched-adapters.js",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "test": "echo \"Tests coming soon\"",
+    "sync-version": "node scripts/sync-version.js",
+    "sync-and-publish": "npm run sync-version && npm run build && npm publish",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@10.11.1+sha512.e519b9f7639869dc8d5c3c5dfef73b3f091094b0a006d7317353c72b124e80e1afd429732e28705ad6bfa1ee879c1fce46c128ccebd3192101f43dd67c667912"
+}
