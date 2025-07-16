@@ -51,6 +51,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@astrojs/internal-helpers": "^0.6.1",
     "send": "^1.2.0",
     "server-destroy": "^1.0.1",
     "ws": "^8.18.0"

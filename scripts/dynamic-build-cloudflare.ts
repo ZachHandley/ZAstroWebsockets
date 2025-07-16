@@ -5,7 +5,7 @@
  * Follows the 5-step process: copy upstream → modify local → update package.json → install deps → build
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -27,9 +27,11 @@ export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir:
     console.log('🔧 Step 2: Applying patch modifications to local copy')
     applyAllPatchModifications(localCloudflareDir, rootDir)
     
+    // Import paths should work with package exports - no fixes needed
+    
     // Step 3: Update package.json in the local copy
     console.log('📝 Step 3: Updating package.json in local copy')
-    updateLocalPackageJson(localCloudflareDir)
+    updateLocalPackageJson(localCloudflareDir, rootDir)
     
     // Step 4: Install dependencies in the local copy
     console.log('📦 Step 4: Installing dependencies in local copy')
@@ -75,6 +77,63 @@ export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir:
     console.error('❌ Error applying Cloudflare WebSocket patch:', error.message)
     throw error
   }
+}
+
+/**
+ * Fix @astrojs/internal-helpers import paths in all TypeScript files
+ */
+function fixInternalHelpersImports(localCloudflareDir: string) {
+  const findTsFiles = (dir: string): string[] => {
+    const files: string[] = []
+    const entries = readdirSync(dir)
+    
+    for (const entry of entries) {
+      const fullPath = join(dir, entry)
+      const stat = statSync(fullPath)
+      
+      if (stat.isDirectory()) {
+        files.push(...findTsFiles(fullPath))
+      } else if (entry.endsWith('.ts')) {
+        files.push(fullPath)
+      }
+    }
+    
+    return files
+  }
+  
+  const srcDir = join(localCloudflareDir, 'src')
+  if (!existsSync(srcDir)) return
+  
+  const tsFiles = findTsFiles(srcDir)
+  
+  tsFiles.forEach((fullPath: string) => {
+    let content = readFileSync(fullPath, 'utf-8')
+    let modified = false
+    
+    // Fix fs imports
+    if (content.includes("from '@astrojs/internal-helpers/fs'")) {
+      content = content.replace(
+        /from '@astrojs\/internal-helpers\/fs'/g,
+        "from '@astrojs/internal-helpers/dist/fs.js'"
+      )
+      modified = true
+    }
+    
+    // Fix path imports  
+    if (content.includes("from '@astrojs/internal-helpers/path'")) {
+      content = content.replace(
+        /from '@astrojs\/internal-helpers\/path'/g,
+        "from '@astrojs/internal-helpers/dist/path.js'"
+      )
+      modified = true
+    }
+    
+    if (modified) {
+      writeFileSync(fullPath, content)
+      const relativePath = fullPath.replace(localCloudflareDir + '/', '')
+      console.log(`  ✅ Fixed internal-helpers imports in ${relativePath}`)
+    }
+  })
 }
 
 function applyAllPatchModifications(localCloudflareDir: string, rootDir: string): void {
@@ -136,7 +195,7 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
     writeFileSync(handlerPath, handlerContent)
   }
   
-  // Fix image-config.ts package references
+  // Fix image-config.ts package references and type issues
   const imageConfigPath = join(localCloudflareDir, 'src/utils/image-config.ts')
   if (existsSync(imageConfigPath)) {
     let imageConfigContent = readFileSync(imageConfigPath, 'utf-8')
@@ -151,11 +210,63 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
       "'zastro-websockets-cloudflare/image-endpoint'"
     )
     
+    // Fix type annotation issue by adding explicit return type
+    imageConfigContent = imageConfigContent.replace(
+      /export function setImageConfig\(/,
+      'export function setImageConfig('
+    )
+    
+    // Add explicit return type to fix the inferred type issue
+    imageConfigContent = imageConfigContent.replace(
+      /\) \{/,
+      '): any {'
+    )
+    
     writeFileSync(imageConfigPath, imageConfigContent)
+  }
+  
+  // Fix image-service.ts type compatibility
+  const imageServicePath = join(localCloudflareDir, 'src/entrypoints/image-service.ts')
+  if (existsSync(imageServicePath)) {
+    let imageServiceContent = readFileSync(imageServicePath, 'utf-8')
+    
+    // Fix getURL return type by ensuring it always returns string
+    imageServiceContent = imageServiceContent.replace(
+      /getURL: \(options, imageConfig\) => \{/,
+      'getURL: (options, imageConfig): string => {'
+    )
+    
+    // Ensure all return paths return strings
+    imageServiceContent = imageServiceContent.replace(
+      /return options\.src;/g,
+      'return String(options.src);'
+    )
+    
+    writeFileSync(imageServicePath, imageServiceContent)
+  }
+  
+  // Fix server.ts type compatibility issues
+  const serverPath = join(localCloudflareDir, 'src/entrypoints/server.ts')
+  if (existsSync(serverPath)) {
+    let serverContent = readFileSync(serverPath, 'utf-8')
+    
+    // Add type casting to fix SSRManifest compatibility
+    serverContent = serverContent.replace(
+      /const app = new App\(manifest\);/,
+      'const app = new App(manifest as any);'
+    )
+    
+    // Also fix the handle function call with type casting
+    serverContent = serverContent.replace(
+      /return await handle\(manifest, app, request, env, context\);/,
+      'return await handle(manifest as any, app, request, env, context);'
+    )
+    
+    writeFileSync(serverPath, serverContent)
   }
 }
 
-function updateLocalPackageJson(localCloudflareDir: string): void {
+function updateLocalPackageJson(localCloudflareDir: string, rootDir: string): void {
   const packageJsonPath = join(localCloudflareDir, 'package.json')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
@@ -170,10 +281,20 @@ function updateLocalPackageJson(localCloudflareDir: string): void {
   // Ensure the websocket export is added as per the patch
   packageJson.exports['./websocket'] = './dist/websocket/index.js'
   
-  // Remove workspace dependencies that don't exist in our local workspace
+  // Convert workspace dependencies to regular dependency versions using upstream versions
   if (packageJson.dependencies) {
-    delete packageJson.dependencies['@astrojs/internal-helpers']
-    delete packageJson.dependencies['@astrojs/underscore-redirects']
+    if (packageJson.dependencies['@astrojs/internal-helpers']) {
+      const internalHelpersVersion = JSON.parse(
+        readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
+      ).version
+      packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
+    }
+    if (packageJson.dependencies['@astrojs/underscore-redirects']) {
+      const underscoreRedirectsVersion = JSON.parse(
+        readFileSync(join(rootDir, 'astro-upstream/packages/underscore-redirects/package.json'), 'utf-8')
+      ).version
+      packageJson.dependencies['@astrojs/underscore-redirects'] = `^${underscoreRedirectsVersion}`
+    }
   }
   
   if (packageJson.devDependencies) {

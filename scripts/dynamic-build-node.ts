@@ -5,7 +5,7 @@
  * Follows the correct approach: copy upstream -> modify local -> build local
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, cpSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -34,7 +34,7 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
     
     // Step 3: Update package.json in the local copy
     console.log('📝 Updating package.json in local copy...')
-    updateLocalPackageJson(localNodeDir)
+    updateLocalPackageJson(localNodeDir, rootDir)
     
     // Step 4: Install dependencies in the local copy
     console.log('📦 Installing dependencies in local copy...')
@@ -89,8 +89,52 @@ function applyAllPatchModifications(localNodeDir: string) {
   applyTypesModifications(srcDir)
   applyIndexModifications(srcDir)
   
+  // Import paths should work with package exports - no fixes needed
+  
   // Create new WebSocket files
   createWebSocketFiles(websocketDir, middlewareDir)
+}
+
+/**
+ * Fix @astrojs/internal-helpers import paths in all TypeScript files
+ */
+function fixInternalHelpersImports(localNodeDir: string) {
+  const findTsFiles = (dir: string): string[] => {
+    const files: string[] = []
+    const entries = readdirSync(dir)
+    
+    for (const entry of entries) {
+      const fullPath = join(dir, entry)
+      const stat = statSync(fullPath)
+      
+      if (stat.isDirectory()) {
+        files.push(...findTsFiles(fullPath))
+      } else if (entry.endsWith('.ts')) {
+        files.push(fullPath)
+      }
+    }
+    
+    return files
+  }
+  
+  const srcDir = join(localNodeDir, 'src')
+  if (!existsSync(srcDir)) return
+  
+  const tsFiles = findTsFiles(srcDir)
+  
+  tsFiles.forEach((fullPath: string) => {
+    let content = readFileSync(fullPath, 'utf-8')
+    let modified = false
+    
+    // No need to fix imports - they should work with the package exports
+    // The issue is that we need to keep @astrojs/internal-helpers as a dependency
+    
+    if (modified) {
+      writeFileSync(fullPath, content)
+      const relativePath = fullPath.replace(localNodeDir + '/', '')
+      console.log(`  ✅ Fixed internal-helpers imports in ${relativePath}`)
+    }
+  })
 }
 
 /**
@@ -214,13 +258,15 @@ function applyIndexModifications(srcDir: string) {
     "previewEntrypoint: 'zastro-websockets-node/preview.js'"
   )
   
+  // Import paths should work with package exports - no changes needed
+  
   writeFileSync(indexPath, content)
 }
 
 /**
  * Update package.json in the local copy
  */
-function updateLocalPackageJson(localNodeDir: string) {
+function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
   const packageJsonPath = join(localNodeDir, 'package.json')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
@@ -233,9 +279,12 @@ function updateLocalPackageJson(localNodeDir: string) {
   }
   packageJson.dependencies.ws = '^8.18.0'
   
-  // Remove workspace dependency - we'll link it manually
-  if (packageJson.dependencies) {
-    delete packageJson.dependencies['@astrojs/internal-helpers']
+  // Convert workspace dependency to regular dependency version using upstream version
+  if (packageJson.dependencies && packageJson.dependencies['@astrojs/internal-helpers']) {
+    const internalHelpersVersion = JSON.parse(
+      readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
+    ).version
+    packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
   }
   
   // Add ws types

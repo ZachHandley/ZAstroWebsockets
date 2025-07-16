@@ -35,6 +35,8 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@astrojs/internal-helpers": "^0.6.1",
+    "@astrojs/underscore-redirects": "^1.0.0",
     "@cloudflare/workers-types": "^4.20250507.0",
     "tinyglobby": "^0.2.13",
     "vite": "^6.3.5",
