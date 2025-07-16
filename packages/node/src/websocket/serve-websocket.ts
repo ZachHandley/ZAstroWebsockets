@@ -39,7 +39,7 @@ export function createWebsocketHandler(app: NodeApp): UpgradeHandler {
 
         if (response instanceof UpgradeResponse) {
             const websocket = responseToSocketMap.get(response)!
-            server.handleUpgrade(req, socket, head, ws => attach(websocket, ws, req))
+            server.handleUpgrade(req, socket, head, (wsSocket: ws.WebSocket) => attach(websocket, wsSocket))
         } else {
             await writeResponseToSocket(socket, response)
         }

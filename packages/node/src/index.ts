@@ -1,55 +1,123 @@
-// Export Node.js specific adapter
-export { default } from './adapter/index.js';
-export * from './adapter/index.js';
+import { fileURLToPath } from 'node:url';
+import { writeJson } from '@astrojs/internal-helpers/fs';
+import type {
+	AstroAdapter,
+	AstroConfig,
+	AstroIntegration,
+	NodeAppHeadersJson,
+	RouteToHeaders,
+} from 'astro';
+import { AstroError } from 'astro/errors';
+import { STATIC_HEADERS_FILE } from './shared.js';
+import type { Options, UserOptions } from './types.js';
 
-// Export types
-export * from './types.js';
+export function getAdapter(options: Options): AstroAdapter {
+	return {
+		name: 'zastro-websockets-node',
+		serverEntrypoint: 'zastro-websockets-node/server.js',
+		previewEntrypoint: 'zastro-websockets-node/preview.js',
+		exports: ['handler', 'startServer', 'options'],
+		args: options,
+		adapterFeatures: {
+			buildOutput: 'server',
+			edgeMiddleware: false,
+			experimentalStaticHeaders: options.experimentalStaticHeaders,
+		},
+		supportedAstroFeatures: {
+			hybridOutput: 'stable',
+			staticOutput: 'stable',
+			serverOutput: 'stable',
+			sharpImageService: 'stable',
+			i18nDomains: 'experimental',
+			envGetSecret: 'stable',
+		},
+	};
+}
 
-// Export WebSocket functionality (without conflicts)
-export { 
-  WebSocket as ZastroWebSocket, 
-  ErrorEvent, 
-  CloseEvent,
-  attach
-} from './websocket/websocket.js';
-export { UpgradeResponse as WebSocketUpgradeResponse } from './websocket/response.js';
-export { 
-  WebSocketStats, 
-  registerConnection, 
-  updateConnectionActivity, 
-  logConnectionStats,
-  type ConnectionMetadata,
-  type ConnectionStats
-} from './websocket/stats.js';
-export { getConnectionId, getWsSocket } from './websocket/attach.js';
-export { onRequest as websocketDevMiddleware, handleUpgradeRequests } from './websocket/dev-middleware.js';
-export { createWebsocketHandler } from './websocket/serve-websocket.js';
+export default function createIntegration(userOptions: UserOptions): AstroIntegration {
+	if (!userOptions?.mode) {
+		throw new AstroError(`Setting the 'mode' option is required.`);
+	}
 
-// Export connection manager functionality
-export { 
-  ConnectionManager,
-  ConnectionManagerAPI,
-  getConnectionManager,
-  resetConnectionManager,
-  type ConnectionManagerConfig,
-  type ManagedConnection,
-  type ConnectionPoolConfig
-} from './websocket/connection-manager.js';
+	let _options: Options;
+	let _config: AstroConfig | undefined = undefined;
+	let _routeToHeaders: RouteToHeaders | undefined = undefined;
+	return {
+		name: 'zastro-websockets-node',
+		hooks: {
+			'astro:config:setup': async ({ updateConfig, config, logger }) => {
+				let session = config.session;
+				_config = config;
+				if (!session?.driver) {
+					logger.info('Enabling sessions with filesystem storage');
+					session = {
+						...session,
+						driver: 'fs-lite',
+						options: {
+							base: fileURLToPath(new URL('sessions', config.cacheDir)),
+						},
+					};
+				}
 
-// Export enhanced middleware functionality
-export { 
-  createStatsMiddleware,
-  createAdvancedStatsMiddleware,
-  createBasicStatsMiddleware,
-  createDevStatsMiddleware,
-  trackConnectionForPage,
-  untrackConnectionForPage,
-  getPageConnectionCounts,
-  clearPageTracking,
-  hasWebSocketStats,
-  type StatsMiddlewareConfig,
-  type WebSocketStatsLocals,
-  type WithWebSocketStats,
-  type APIContextWithWebSocketStats,
-  type MiddlewareContextWithWebSocketStats
-} from './middleware/index.js';
+				updateConfig({
+					image: {
+						endpoint: {
+							route: config.image.endpoint.route ?? '_image',
+							entrypoint: config.image.endpoint.entrypoint ?? 'astro/assets/endpoint/node',
+						},
+					},
+					session,
+					vite: {
+						ssr: {
+							noExternal: ['@astrojs/node'],
+						},
+					},
+				});
+			},
+			'astro:build:generated': ({ experimentalRouteToHeaders }) => {
+				_routeToHeaders = experimentalRouteToHeaders;
+			},
+			'astro:config:done': ({ setAdapter, config }) => {
+				_options = {
+					...userOptions,
+					client: config.build.client?.toString(),
+					server: config.build.server?.toString(),
+					host: config.server.host,
+					port: config.server.port,
+					assets: config.build.assets,
+					experimentalStaticHeaders: userOptions.experimentalStaticHeaders ?? false,
+				};
+				setAdapter(getAdapter(_options));
+			},
+			'astro:build:done': async () => {
+				if (!_config) {
+					return;
+				}
+
+				if (_routeToHeaders && _routeToHeaders.size > 0) {
+					const headersFileUrl = new URL(STATIC_HEADERS_FILE, _config.outDir);
+					const headersValue: NodeAppHeadersJson = [];
+
+					for (const [pathname, { headers }] of _routeToHeaders.entries()) {
+						if (_config.experimental.csp) {
+							const csp = headers.get('Content-Security-Policy');
+							if (csp) {
+								headersValue.push({
+									pathname,
+									headers: [
+										{
+											key: 'Content-Security-Policy',
+											value: csp,
+										},
+									],
+								});
+							}
+						}
+					}
+
+					await writeJson(headersFileUrl, headersValue);
+				}
+			},
+		},
+	};
+}

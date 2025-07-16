@@ -2,7 +2,7 @@ import { joinPaths } from '@astrojs/internal-helpers/path';
 import type { ExternalImageService } from 'astro';
 import { baseService } from 'astro/assets';
 import { isESMImportedImage } from 'astro/assets/utils';
-import { isRemoteAllowed } from '../adapter/utils/assets.js';
+import { isRemoteAllowed } from '../utils/assets.js';
 
 const service: ExternalImageService = {
 	...baseService,

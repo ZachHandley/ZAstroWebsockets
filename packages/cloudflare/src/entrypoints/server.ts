@@ -2,7 +2,7 @@ import type { ExecutionContext, ExportedHandlerFetchHandler } from '@cloudflare/
 import type { SSRManifest } from 'astro';
 
 import { App } from 'astro/app';
-import { handle } from '../adapter/utils/handler.js';
+import { handle } from '../utils/handler.js';
 
 type Env = {
 	[key: string]: unknown;

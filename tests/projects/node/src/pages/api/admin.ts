@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { WebSocketStats } from 'zastro-websockets-node'
+import { WebSocketStats } from 'zastro-websockets-node/stats'
 
 export const GET: APIRoute = () => {
   const stats = WebSocketStats.getConnectionStats()

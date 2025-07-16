@@ -18,5 +18,11 @@ tmp/
 # Build-generated files (copied from astro-upstream during build)
 src/adapters/patched/
 astro-upstream/
+packages/node/src
+packages/node/test
+packages/cloudflare/src
+packages/cloudflare/test
+packages/node/tsconfig.json
+packages/cloudflare/tsconfig.json
 
 # Legacy source files that are redundant with patches (now cleaned up)

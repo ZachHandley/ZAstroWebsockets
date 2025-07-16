@@ -7,6 +7,7 @@ import cloudflare from 'zastro-websockets-cloudflare';
 export default defineConfig({
   output: 'server',
   adapter: cloudflare({
-    imageService: 'cloudflare'
+    imageService: 'cloudflare',
+    mode: 'compile'
   })
 });

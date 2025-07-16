@@ -68,8 +68,7 @@ export class WebSocket extends EventTarget implements WebSocketInterface {
     set binaryType(value: "arraybuffer" | "blob") {
         const ws = wsMap.get(this)
         if (ws) {
-            // @ts-expect-error `"blob"` is supported by `ws`
-            ws.binaryType = value
+            (ws as any).binaryType = value
         } else {
             this.addEventListener("open", () => this.binaryType = value, { once: true })
         }
@@ -97,7 +96,7 @@ export class WebSocket extends EventTarget implements WebSocketInterface {
     }
 }
 
-function attachImpl(standard: WebSocket, ws: ws.WebSocket, req?: import('node:http').IncomingMessage): void {
+function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
     // Use a WeakMap to store private WebSocket instances
     if (wsMap.has(standard)) {
         throw new Error("WebSocket already attached")
@@ -108,8 +107,7 @@ function attachImpl(standard: WebSocket, ws: ws.WebSocket, req?: import('node:ht
 
 function init(standard: WebSocket, ws: ws.WebSocket) {
     // set the binary type to `"blob"` to align with the browser default
-    // @ts-expect-error `"blob"` is supported by `ws`
-    ws.binaryType = "blob"
+    (ws as any).binaryType = "blob"
 
     if (ws.readyState === ws.OPEN) {
         const event = new Event("open")
@@ -123,19 +121,19 @@ function init(standard: WebSocket, ws: ws.WebSocket) {
         standard.dispatchEvent(event)
     })
 
-    ws.on("message", function onMessage(data, isBinary) {
+    ws.on("message", function onMessage(data: any, isBinary: boolean) {
         const event = new MessageEvent("message", { data: isBinary ? data : data.toString(), })
         standard.onmessage?.(event)
         standard.dispatchEvent(event)
     })
 
-    ws.on("error", function onError(error) {
+    ws.on("error", function onError(error: Error) {
         const event = new ErrorEvent(error, error.message)
         standard.onerror?.(event)
         standard.dispatchEvent(event)
     })
 
-    ws.addEventListener("close", function onClose(ev) {
+    ws.addEventListener("close", function onClose(ev: any) {
         const event = new (globalThis.CloseEvent ?? CloseEvent)("close", ev)
         standard.onclose?.(event)
         standard.dispatchEvent(event)
@@ -161,8 +159,8 @@ export class CloseEvent extends Event implements globalThis.CloseEvent {
     }
 }
 
-export function attach(standard: WebSocket, ws: ws.WebSocket, req?: import('node:http').IncomingMessage): void {
-    return attacher.attach?.(standard, ws, req)
+export function attach(standard: WebSocket, ws: ws.WebSocket): void {
+    return attacher.attach?.(standard, ws)
 }
 
 interface CloseEventInit extends EventInit {

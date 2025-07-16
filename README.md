@@ -515,6 +515,166 @@ pnpm install
 pnpm run build
 ```
 
+## Development Guide
+
+### How the Build System Works
+
+This project uses a **dynamic build system** that automatically applies WebSocket patches to upstream Astro adapters. Here's how it works:
+
+#### 1. Project Structure
+```
+zastro-websockets/
+├── astro-upstream/               # Git submodule of official Astro repo
+├── packages/
+│   ├── node/                    # Built Node.js adapter (generated)
+│   │   ├── dist/               # Built TypeScript files
+│   │   ├── src/                # Copied & modified upstream source
+│   │   └── package.json        # Modified package.json
+│   └── cloudflare/             # Built Cloudflare adapter (generated)
+│       ├── dist/               # Built TypeScript files
+│       ├── src/                # Copied & modified upstream source
+│       └── package.json        # Modified package.json
+├── patches/                     # Legacy patch files (reference only)
+├── scripts/                     # Build automation scripts
+│   ├── dynamic-build.ts        # Main build orchestrator
+│   ├── dynamic-build-node.ts   # Node.js adapter build script
+│   └── dynamic-build-cloudflare.ts # Cloudflare adapter build script
+└── tests/projects/             # Test projects for both adapters
+```
+
+#### 2. Build Process Overview
+
+The build system uses a **5-step process** for each adapter:
+
+1. **Copy Upstream** → Copy source files from `astro-upstream/packages/integrations/[adapter]` to `packages/[adapter]/`
+2. **Apply Modifications** → Apply all WebSocket patch modifications as code transformations
+3. **Update Package.json** → Change package name and add WebSocket dependencies
+4. **Install Dependencies** → Install dependencies in the local copy
+5. **Build Locally** → Compile TypeScript to create the final `dist/` folder
+
+#### 3. Key Build Scripts
+
+**Main Build Script: `scripts/dynamic-build.ts`**
+- Orchestrates the entire build process
+- Cleans upstream and installs dependencies
+- Runs both Node.js and Cloudflare builds sequentially
+
+**Node.js Build: `scripts/dynamic-build-node.ts`**
+- Copies upstream Node.js adapter source
+- Applies all WebSocket modifications from the original patch
+- Creates WebSocket files: `websocket/`, `middleware/`
+- Adds `ws` dependency and WebSocket exports
+- Builds standalone TypeScript project
+
+**Cloudflare Build: `scripts/dynamic-build-cloudflare.ts`**
+- Copies upstream Cloudflare adapter source  
+- Applies WebSocket modifications for Cloudflare Workers
+- Creates WebSocket files and entrypoint modifications
+- Adds WebSocket export to package.json
+- Builds standalone TypeScript project
+
+#### 4. Available Scripts
+
+```bash
+# Full build process (recommended)
+pnpm run build
+
+# Build only upstream Astro (without adapters)
+pnpm run build:upstream
+
+# Build only the adapters (after upstream is built)
+pnpm run build:adapters
+
+# Test the Node.js adapter
+pnpm run test:node
+
+# Test the Cloudflare adapter  
+pnpm run test:cloudflare
+
+# Test both adapters
+pnpm run test
+
+# Reset the astro-upstream submodule
+pnpm run reset
+```
+
+#### 5. How Patches Are Applied
+
+Instead of using Git patches, the build system applies modifications **as code transformations**:
+
+**For Node.js Adapter:**
+- Modifies `serve-app.ts` to add WebSocket upgrade handling
+- Modifies `standalone.ts` to add WebSocket server integration
+- Modifies `types.ts` to export WebSocket types
+- Modifies `index.ts` to change package name references
+- Creates complete WebSocket implementation files
+
+**For Cloudflare Adapter:**
+- Modifies `index.ts` to change package name references
+- Creates WebSocket implementation files for Cloudflare Workers
+- Adds WebSocket export to package.json
+
+#### 6. Development Workflow
+
+1. **Make Changes to Build Scripts**
+   - Edit `scripts/dynamic-build-node.ts` for Node.js changes
+   - Edit `scripts/dynamic-build-cloudflare.ts` for Cloudflare changes
+
+2. **Test Your Changes**
+   ```bash
+   pnpm run build
+   pnpm run test
+   ```
+
+3. **Debug Build Issues**
+   - Check `packages/node/` and `packages/cloudflare/` for generated files
+   - Review TypeScript errors in build output
+   - Verify WebSocket files are created correctly
+
+4. **Update Tests**
+   - Test projects are in `tests/projects/`
+   - Update test projects to match API changes
+
+#### 7. Key Differences from Patch-Based Approach
+
+| Aspect | Old Patch System | New Dynamic System |
+|--------|------------------|-------------------|
+| **Modification Method** | Git patches | Code transformations |
+| **Build Location** | Upstream directory | Local packages/ directory |
+| **Dependency Management** | Workspace conflicts | Isolated local dependencies |
+| **TypeScript Compilation** | Upstream tsconfig | Custom standalone tsconfig |
+| **Maintenance** | Manual patch updates | Automated code generation |
+| **Debugging** | Patch application errors | Clear TypeScript errors |
+
+#### 8. Adding New Features
+
+To add new WebSocket features:
+
+1. **Update the build scripts** to include your new files/modifications
+2. **Add the files to the appropriate `createWebSocketFiles()` function**
+3. **Update package.json exports** if needed
+4. **Test the build process** with `pnpm run build`
+5. **Update the test projects** to demonstrate the new features
+
+#### 9. Troubleshooting Development Issues
+
+**Build Fails with TypeScript Errors:**
+- Check that all imports are correctly resolved
+- Verify workspace dependencies are properly linked
+- Ensure tsconfig.json has correct module resolution
+
+**Missing WebSocket Files:**
+- Check that `createWebSocketFiles()` creates all necessary files
+- Verify file paths and exports are correct
+- Ensure TypeScript compilation includes all source files
+
+**Dependency Resolution Issues:**
+- Verify that `@astrojs/internal-helpers` is properly linked
+- Check that all required dependencies are installed
+- Ensure package.json has correct dependency versions
+
+This dynamic build system eliminates the need for manual patch management while providing more flexibility and reliability than the previous patch-based approach.
+
 ## License
 
 MIT - see LICENSE file for details.
