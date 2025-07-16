@@ -88,33 +88,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Setup latest adapters and build
+      - name: Setup and build adapters
         run: |
-          echo "Fetching latest adapter tags..."
-          cd astro-upstream && git fetch --tags
+          echo "Setting up astro-upstream submodule..."
+          pnpm run setup:adapters
           
-          echo "Finding latest node and cloudflare versions..."
-          NODE_TAG=$(git tag --list '@astrojs/node@*' | sort -V | tail -1)
-          CF_TAG=$(git tag --list '@astrojs/cloudflare@*' | sort -V | tail -1)
-          echo "Latest Node.js adapter: $NODE_TAG"
-          echo "Latest Cloudflare adapter: $CF_TAG"
-          
-          echo "Checking out main branch for full repo structure..."
-          git checkout main
-          
-          echo "Installing astro-upstream dependencies..."
-          pnpm install
-          
-          echo "Building adapters in astro-upstream..."
-          pnpm run build --filter="@astrojs/node" --filter="@astrojs/cloudflare"
-          
-          cd ..
-          
-          echo "Building with current setup..."
+          echo "Building adapters with dynamic build system..."
           pnpm run build
           
           echo "Testing both adapters..."
-          pnpm run test:node && pnpm run test:cloudflare
+          pnpm run test
 
       - name: Update version in package.json
         run: |
@@ -147,11 +130,10 @@ jobs:
           
           mv temp_changelog.md CHANGELOG.md
 
-      - name: Build package
-        run: pnpm run build
-
-      - name: Run type check
-        run: pnpm run type-check
+      - name: Final build and type check
+        run: |
+          pnpm run build
+          pnpm run type-check
 
       - name: Commit version updates
         run: |
@@ -168,8 +150,8 @@ jobs:
       - name: Push changes
         run: git push origin main
 
-      - name: Publish to npm
-        run: pnpm publish --no-git-checks
+      - name: Publish packages to npm
+        run: pnpm run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

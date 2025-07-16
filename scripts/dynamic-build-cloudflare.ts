@@ -135,6 +135,24 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
     
     writeFileSync(handlerPath, handlerContent)
   }
+  
+  // Fix image-config.ts package references
+  const imageConfigPath = join(localCloudflareDir, 'src/utils/image-config.ts')
+  if (existsSync(imageConfigPath)) {
+    let imageConfigContent = readFileSync(imageConfigPath, 'utf-8')
+    
+    // Update image service entrypoint references
+    imageConfigContent = imageConfigContent.replace(
+      /'@astrojs\/cloudflare\/image-service'/g,
+      "'zastro-websockets-cloudflare/image-service'"
+    )
+    imageConfigContent = imageConfigContent.replace(
+      /'@astrojs\/cloudflare\/image-endpoint'/g,
+      "'zastro-websockets-cloudflare/image-endpoint'"
+    )
+    
+    writeFileSync(imageConfigPath, imageConfigContent)
+  }
 }
 
 function updateLocalPackageJson(localCloudflareDir: string): void {
