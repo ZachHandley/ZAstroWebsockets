@@ -190,3 +190,10 @@ interface CloudflareWebSocket {
   send(data: string | ArrayBufferLike | ArrayBufferView): void
   close(code?: number, reason?: string): void
   addEventListener(type: 'message', listener: (event: { data: any }) => void): void
+  addEventListener(type: 'close', listener: (event: { code: number; reason: string; wasClean: boolean }) => void): void
+  addEventListener(type: 'error', listener: (event: any) => void): void
+  addEventListener(type: 'open', listener: (event: any) => void): void
+  removeEventListener(type: string, listener: any): void
+  readonly readyState: number
+  readonly url: string
+}

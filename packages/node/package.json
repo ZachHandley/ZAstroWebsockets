@@ -22,12 +22,12 @@
   "bugs": {
     "url": "https://github.com/zachhandley/zastro-websockets/issues"
   },
-  "main": "./dist/adapter/index.js",
-  "types": "./dist/adapter/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/adapter/index.d.ts",
-      "import": "./dist/adapter/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./adapter": {
       "types": "./dist/adapter/index.d.ts",
@@ -44,6 +44,26 @@
     "./websocket/dev-middleware": {
       "types": "./dist/websocket/dev-middleware.d.ts",
       "import": "./dist/websocket/dev-middleware.js"
+    },
+    "./websocket/stats": {
+      "types": "./dist/websocket/stats.d.ts",
+      "import": "./dist/websocket/stats.js"
+    },
+    "./stats": {
+      "types": "./dist/websocket/stats.d.ts",
+      "import": "./dist/websocket/stats.js"
+    },
+    "./websocket/connection-manager": {
+      "types": "./dist/websocket/connection-manager.d.ts",
+      "import": "./dist/websocket/connection-manager.js"
+    },
+    "./connection-manager": {
+      "types": "./dist/websocket/connection-manager.d.ts",
+      "import": "./dist/websocket/connection-manager.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
     }
   },
   "files": [

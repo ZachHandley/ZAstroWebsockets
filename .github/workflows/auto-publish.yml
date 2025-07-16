@@ -82,8 +82,25 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Initialize submodule properly
+        run: |
+          git submodule update --init --recursive
+          cd astro-upstream && git fetch
+
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup adapters and test builds
+        run: |
+          echo "Setting up Node.js adapter..."
+          pnpm run setup:node
+          echo "Testing Node.js adapter build..."
+          pnpm run test:node
+          
+          echo "Setting up Cloudflare adapter..."
+          pnpm run setup:cloudflare  
+          echo "Testing Cloudflare adapter build..."
+          pnpm run test:cloudflare
 
       - name: Update version in package.json
         run: |
@@ -143,7 +160,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
-        uses: actions/create-release@v1
+        uses: actions/create-release@v1.1.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -153,10 +170,20 @@ jobs:
             ## Changes
             - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
             - Synced with upstream Astro repository
+            - Tested with both Node.js and Cloudflare adapters
             
             ## Installation
             ```bash
             npm install zastro-websockets@${{ needs.check-submodule.outputs.new-version }}
+            ```
+            
+            ## Adapter Setup
+            ```bash
+            # For Node.js adapter
+            pnpm run setup:node
+            
+            # For Cloudflare adapter  
+            pnpm run setup:cloudflare
             ```
           draft: false
           prerelease: false

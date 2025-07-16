@@ -7,7 +7,10 @@ export default defineConfig({
     'src/adapter/index.ts',
     'src/adapter/server.ts',
     'src/adapter/preview.ts',
-    'src/websocket/dev-middleware.ts'
+    'src/websocket/dev-middleware.ts',
+    'src/websocket/stats.ts',
+    'src/websocket/connection-manager.ts',
+    'src/middleware/index.ts'
   ],
   format: ['esm'],
   dts: false,

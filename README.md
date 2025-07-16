@@ -4,7 +4,7 @@ Universal WebSocket support for Astro SSR Apps with **pre-patched adapters** - n
 
 ## Overview
 
-The `zastro-websockets` package provides WebSocket support for your Astro project by shipping **pre-patched** versions of official Astro adapters. This approach, inspired by [gratelets](https://github.com/gratelets/gratelets), eliminates the need for manual patching and provides a more reliable solution.
+ZAstroWebsockets is a monorepo containing WebSocket-enabled Astro adapters for Node.js and Cloudflare Workers. Each adapter is distributed as a separate package with WebSocket support built-in, eliminating the need for manual patching.
 
 ## Features
 
@@ -14,44 +14,54 @@ The `zastro-websockets` package provides WebSocket support for your Astro projec
 - ✅ **Unified API**: Same WebSocket API across all runtimes
 - ✅ **TypeScript support**: Full type safety and IntelliSense
 - ✅ **Drop-in replacement**: Simply replace your adapter import
-- ✅ **Connection management**: Built-in connection tracking and cleanup
+- ✅ **Monorepo structure**: Separate packages for each runtime
 - ✅ **Auto-versioning**: Synced with upstream Astro submodule
 
 ## Installation
 
+Install the specific adapter package you need:
+
+### For Node.js
+
 ```bash
-npm install zastro-websockets
+npm install zastro-websockets-node
+```
+
+### For Cloudflare Workers
+
+```bash
+npm install zastro-websockets-cloudflare
 ```
 
 ## Usage
 
 ### Node.js Adapter
 
-Replace your existing `@astrojs/node` import with the pre-patched version:
+Replace your existing `@astrojs/node` import with the WebSocket-enabled version:
 
 ```js
 // astro.config.mjs
 import { defineConfig } from "astro/config"
-import node from "zastro-websockets/node"  // Pre-patched version
+import node from "zastro-websockets-node"
 
 export default defineConfig({
+  output: "server",
   adapter: node({ mode: "standalone" }),
-  // No additional integrations needed!
 });
 ```
 
 ### Cloudflare Adapter
 
-Replace your existing `@astrojs/cloudflare` import with the pre-patched version:
+Replace your existing `@astrojs/cloudflare` import with the WebSocket-enabled version:
 
 ```js
 // astro.config.mjs
 import { defineConfig } from "astro/config"
-import cloudflare from "zastro-websockets/cloudflare"  // Pre-patched version
+import cloudflare from "zastro-websockets-cloudflare"
 
 export default defineConfig({
+  output: "server",
   adapter: cloudflare(),
-  // No additional integrations needed!
 });
 ```
 
@@ -123,64 +133,28 @@ export const GET: APIRoute = (ctx) => {
 </script>
 ```
 
-## Connection Management
+## Project Structure
 
-ZAstroWebsockets includes built-in connection tracking and cleanup features:
+This is a monorepo containing:
 
-### Connection Statistics
-
-```ts
-// src/pages/api/stats.ts
-import { WebSocketStats } from "zastro-websockets/node"
-
-export const GET = () => {
-  const stats = WebSocketStats.getConnectionStats()
-  return new Response(JSON.stringify({
-    activeConnections: stats.totalConnections,
-    connections: stats.connections.map(conn => ({
-      age: Math.round(conn.age / 1000) + 's',
-      idle: Math.round(conn.idleTime / 1000) + 's',
-      ip: conn.remoteAddress
-    }))
-  }), {
-    headers: { 'Content-Type': 'application/json' }
-  })
-}
+```
+zastro-websockets/
+├── packages/
+│   ├── node/                    # zastro-websockets-node package
+│   └── cloudflare/              # zastro-websockets-cloudflare package
+├── tests/projects/              # Test projects for both adapters
+├── patches/                     # Patch files for upstream Astro adapters
+└── scripts/                     # Build and sync scripts
 ```
 
-### Connection Cleanup
+### Available Packages
 
-```ts
-// Automatic cleanup runs every 30 seconds
-// Connections idle for 5+ minutes are automatically closed
-
-// Manual cleanup
-import { WebSocketStats } from "zastro-websockets/node"
-
-// Get connection count
-const count = WebSocketStats.getConnectionCount()
-
-// Close all connections
-WebSocketStats.closeAllConnections()
-
-// Graceful shutdown
-WebSocketStats.shutdown()
-```
-
-### Middleware Integration
-
-```ts
-// src/middleware.ts
-import { createStatsMiddleware } from "zastro-websockets/node"
-
-export const onRequest = createStatsMiddleware()
-
-// Now all pages have access to connection stats in Astro.locals.websocketStats
-```
+- **`zastro-websockets-node`** - WebSocket-enabled Node.js adapter
+- **`zastro-websockets-cloudflare`** - WebSocket-enabled Cloudflare Workers adapter
 
 ## TypeScript Support
 
-The package provides full TypeScript support with proper type definitions:
+Both packages provide full TypeScript support with proper type definitions:
 
 ```ts
 // Types are automatically available in your Astro.locals
@@ -190,11 +164,6 @@ declare global {
       isUpgradeRequest: boolean
       upgradeWebSocket(): { socket: WebSocket, response: Response }
       runtime?: any  // Runtime-specific context (Cloudflare only)
-      websocketStats?: {
-        connectionCount: number
-        getStats: () => any
-        getActiveConnections: () => Set<WebSocket>
-      }
     }
   }
 }
@@ -237,12 +206,17 @@ patches/node/v5/websocket-support.patch
    - **Features**: Event handling, message sending, connection state management
 
 4. **Connection Management**
-   - **File**: `src/adapters/patched/node/websocket/connection-manager.ts`
+   - **Basic Stats**: `src/websocket/stats.ts` - Basic connection tracking and statistics
+   - **Advanced Manager**: `src/websocket/connection-manager.ts` - Comprehensive connection lifecycle management
    - **Features**: 
      - Connection tracking with metadata (IP, User-Agent)
-     - Automatic cleanup of stale connections
-     - Statistics and monitoring
-     - Graceful shutdown handling
+     - Connection pooling and limits
+     - Rate limiting per IP address
+     - Health monitoring and checks
+     - Background cleanup services
+     - Event-driven architecture
+     - Graceful shutdown coordination
+     - Custom cleanup policies
 
 5. **Development vs Production**
    - **Development**: Uses `dev-middleware.ts` for Vite integration
@@ -315,9 +289,70 @@ const newVersion = `${astroVersion}-${submoduleCommit.substring(0, 7)}`
 // Version format: 5.7.13-2dbf999
 ```
 
-## Runtime-Specific Features
 
-### Cloudflare Workers
+## Migration from Official Adapters
+
+### From @astrojs/node
+
+```diff
+- import node from "@astrojs/node"
++ import node from "zastro-websockets-node"
+```
+
+### From @astrojs/cloudflare
+
+```diff
+- import cloudflare from "@astrojs/cloudflare"
++ import cloudflare from "zastro-websockets-cloudflare"
+```
+
+That's it! No other changes needed.
+
+## Comparison with Manual Patching
+
+| Feature | Manual Patching | zastro-websockets |
+|---------|----------------|-------------------|
+| Setup complexity | High (manual patch application) | Low (just change import) |
+| Reliability | Depends on patch compatibility | High (pre-tested combinations) |
+| Updates | Manual re-patching required | Automatic with package updates |
+| Maintenance | User responsibility | Package maintainer responsibility |
+| Risk | Patches might break on updates | Version-locked compatibility |
+| Connection Management | Manual implementation | Built-in tracking and cleanup |
+
+## Available Adapters
+
+- ✅ **Node.js** (`zastro-websockets-node`) - Production ready
+- ✅ **Cloudflare Workers** (`zastro-websockets-cloudflare`) - Production ready
+
+> **Note**: The Deno adapter is no longer supported as it has been moved to the Deno organization. Please use the [official Deno adapter](https://github.com/denoland/deno-astro-adapter) for Deno deployments.
+
+## Troubleshooting
+
+### WebSocket connection fails
+- Ensure you're using the correct adapter package (`zastro-websockets-node` or `zastro-websockets-cloudflare`)
+- Check that your hosting environment supports WebSockets
+- Verify the WebSocket URL matches your deployment
+
+### TypeScript errors
+- Make sure to import the adapter from the correct package name
+- Update your `tsconfig.json` to include the package types
+- Restart your TypeScript server after installation
+
+### Development vs Production
+- The adapters work in both development and production
+- Additional logging is available in development mode
+- Make sure to set `output: "server"` in your Astro config
+
+### Package Issues
+- If you're upgrading from the old single package, uninstall `zastro-websockets` first
+- Install the specific adapter package you need (`zastro-websockets-node` or `zastro-websockets-cloudflare`)
+- Update your import statements to use the new package names
+
+## Advanced Configuration
+
+### Runtime-Specific Features
+
+#### Cloudflare Workers
 
 When using the Cloudflare adapter, you get access to the runtime context:
 
@@ -341,133 +376,125 @@ export const GET: APIRoute = (ctx) => {
 }
 ```
 
-### Node.js
+#### Node.js
 
-The Node.js adapter provides standard WebSocket functionality with full Node.js compatibility:
+The Node.js adapter provides standard WebSocket functionality with full Node.js compatibility.
 
-```ts
-import { WebSocketStats, logConnectionStats } from "zastro-websockets/node"
+### Advanced Connection Management (Node.js)
 
-// Connection management
-const stats = WebSocketStats.getConnectionStats()
-console.log(`Active connections: ${stats.totalConnections}`)
+The Node.js adapter includes a powerful ConnectionManager for production-grade WebSocket applications:
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  WebSocketStats.closeAllConnections()
-  WebSocketStats.shutdown()
-  process.exit(0)
-})
-```
-
-## Migration from Official Adapters
-
-### From @astrojs/node
-
-```diff
-- import node from "@astrojs/node"
-+ import node from "zastro-websockets/node"
-```
-
-### From @astrojs/cloudflare
-
-```diff
-- import cloudflare from "@astrojs/cloudflare"
-+ import cloudflare from "zastro-websockets/cloudflare"
-```
-
-That's it! No other changes needed.
-
-## Comparison with Manual Patching
-
-| Feature | Manual Patching | zastro-websockets |
-|---------|----------------|-------------------|
-| Setup complexity | High (manual patch application) | Low (just change import) |
-| Reliability | Depends on patch compatibility | High (pre-tested combinations) |
-| Updates | Manual re-patching required | Automatic with package updates |
-| Maintenance | User responsibility | Package maintainer responsibility |
-| Risk | Patches might break on updates | Version-locked compatibility |
-| Connection Management | Manual implementation | Built-in tracking and cleanup |
-
-## Available Adapters
-
-- ✅ **Node.js** (`zastro-websockets/node`) - Production ready
-- ✅ **Cloudflare Workers** (`zastro-websockets/cloudflare`) - Production ready
-
-> **Note**: The Deno adapter is no longer supported as it has been moved to the Deno organization. Please use the [official Deno adapter](https://github.com/denoland/deno-astro-adapter) for Deno deployments.
-
-## Troubleshooting
-
-### WebSocket connection fails
-- Ensure you're using the pre-patched adapter from `zastro-websockets/*`
-- Check that your hosting environment supports WebSockets
-- Verify the WebSocket URL matches your deployment
-
-### Connection Management Issues
-- Check connection stats with `WebSocketStats.getConnectionStats()`
-- Ensure proper cleanup in your application shutdown handlers
-- Monitor connection logs for idle timeout messages
-
-### TypeScript errors
-- Make sure to import the adapter from the correct path
-- Update your `tsconfig.json` to include the package types
-- Restart your TypeScript server after installation
-
-### Development vs Production
-- The adapters work in both development and production
-- In development, additional logging is available with the optional integration
-- Connection cleanup intervals may be different in development mode
-
-### Patch Application Issues
-- Check that the `astro-upstream` submodule is properly initialized
-- Verify patch files exist in the `patches/` directory
-- Run the build process manually if needed: `npm run build:adapters`
-
-## Advanced Configuration
-
-### Custom Connection Limits
+#### Basic Usage
 
 ```ts
-// src/middleware.ts
-import { connectionManager } from "zastro-websockets/node"
+import { ConnectionManagerAPI } from 'zastro-websockets-node/connection-manager';
 
-export const onRequest = async (context, next) => {
-  const connectionCount = connectionManager.getActiveConnectionCount()
-  
-  if (connectionCount > 100) {
-    return new Response("Too many connections", { status: 503 })
+// Get connection statistics
+const stats = ConnectionManagerAPI.getStats();
+console.log(`Active connections: ${stats.totalManagedConnections}`);
+
+// Perform health checks
+const healthResults = await ConnectionManagerAPI.healthCheck();
+
+// Close connections by criteria
+const closedCount = ConnectionManagerAPI.closeConnections({
+  idleMoreThan: 300000, // Close connections idle for more than 5 minutes
+  tags: ['temporary']   // Close connections tagged as temporary
+});
+```
+
+#### Advanced Configuration
+
+```ts
+import { getConnectionManager } from 'zastro-websockets-node/connection-manager';
+
+const manager = getConnectionManager({
+  maxConnections: 1000,              // Global connection limit
+  maxConnectionsPerIP: 10,           // Per-IP connection limit
+  idleTimeout: 300000,               // 5 minutes idle timeout
+  rateLimitWindow: 60000,            // 1 minute rate limit window
+  rateLimitMaxConnections: 5,        // Max 5 connections per IP per minute
+  enableHealthMonitoring: true,      // Enable automatic health checks
+  customCleanupPolicy: (connection) => {
+    // Custom logic for connection cleanup
+    return connection.tags.has('temporary') && connection.age > 300000;
   }
-  
-  return next()
-}
+});
+
+// Event listeners for monitoring
+manager.on('connection:added', (connection) => {
+  console.log(`New connection: ${connection.id}`);
+});
+
+manager.on('pool:full', (rejected) => {
+  console.warn(`Connection pool full, rejected: ${rejected.ip}`);
+});
+
+manager.on('ratelimit:exceeded', (ip, attempts) => {
+  console.warn(`Rate limit exceeded for ${ip}`);
+});
 ```
 
-### Connection Monitoring
+#### Connection Tagging and Metadata
 
 ```ts
-// src/pages/admin/websocket-monitor.ts
-import { WebSocketStats, logConnectionStats } from "zastro-websockets/node"
+// In your WebSocket route
+socket.addEventListener('open', () => {
+  const connectionId = getConnectionId(socket);
+  if (connectionId) {
+    // Add tags for grouping
+    manager.addConnectionTag(connectionId, 'user-session');
+    manager.addConnectionTag(connectionId, 'real-time-updates');
+    
+    // Store custom metadata
+    manager.setConnectionData(connectionId, 'userId', user.id);
+    manager.setConnectionData(connectionId, 'sessionStart', Date.now());
+  }
+});
 
-export const GET = () => {
-  const stats = WebSocketStats.getConnectionStats()
-  
-  return new Response(JSON.stringify({
-    totalConnections: stats.totalConnections,
-    oldestConnection: Math.max(...stats.connections.map(c => c.age)),
-    averageIdleTime: stats.connections.reduce((sum, c) => sum + c.idleTime, 0) / stats.connections.length
-  }), {
-    headers: { 'Content-Type': 'application/json' }
-  })
+// Later, find connections by criteria
+const userSessions = manager.getConnectionsByTag('user-session');
+const temporaryConnections = manager.getConnectionsByTag('temporary');
+```
+
+#### Health Monitoring
+
+```ts
+// Manual health check
+const result = await manager.performHealthCheck(connectionId);
+if (!result.healthy) {
+  console.warn(`Connection ${connectionId} is unhealthy: ${result.error}`);
 }
+
+// Automatic background health monitoring
+manager.on('connection:health', (connectionId, result) => {
+  if (!result.healthy) {
+    console.warn(`Health check failed for ${connectionId}: ${result.error}`);
+  }
+});
+```
+
+#### Graceful Shutdown
+
+```ts
+// Graceful shutdown with timeout
+await ConnectionManagerAPI.shutdown({
+  timeout: 10000,              // 10 second timeout
+  closeCode: 1001,             // WebSocket close code
+  closeReason: 'Server shutting down'
+});
 ```
 
 ## Examples
 
-Check out the `/examples` directory for complete working examples:
-- Node.js WebSocket server with connection management
-- Cloudflare Workers WebSocket handling
-- Real-time chat application
-- Connection monitoring dashboard
+Check out the test projects for complete working examples:
+- `/tests/projects/node` - Node.js WebSocket implementation
+- `/tests/projects/cloudflare` - Cloudflare Workers WebSocket implementation
+- `/example-usage.md` - Detailed usage guide with examples
+- `/example-websocket.ts` - Basic WebSocket server example
+- `/example-cloudflare-websocket.ts` - Cloudflare-specific example
+- `/example-connection-management.ts` - Basic connection tracking and cleanup
+- `/example-advanced-connection-management.ts` - Advanced connection management with pooling, rate limiting, and health monitoring
 
 ## Contributing
 
@@ -484,8 +511,8 @@ Contributions are welcome! Please:
 git clone https://github.com/zachhandley/zastro-websockets.git
 cd zastro-websockets
 git submodule update --init --recursive
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ## License

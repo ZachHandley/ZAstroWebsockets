@@ -49,6 +49,22 @@
     "./middleware": {
       "types": "./dist/entrypoints/middleware.d.ts",
       "import": "./dist/entrypoints/middleware.js"
+    },
+    "./websocket": {
+      "types": "./dist/adapter/websocket/index.d.ts",
+      "import": "./dist/adapter/websocket/index.js"
+    },
+    "./websocket/stats": {
+      "types": "./dist/adapter/websocket/stats.d.ts",
+      "import": "./dist/adapter/websocket/stats.js"
+    },
+    "./websocket/connection-manager": {
+      "types": "./dist/adapter/websocket/connection-manager.d.ts",
+      "import": "./dist/adapter/websocket/connection-manager.js"
+    },
+    "./websocket/middleware": {
+      "types": "./dist/adapter/websocket/middleware.d.ts",
+      "import": "./dist/adapter/websocket/middleware.js"
     }
   },
   "files": [

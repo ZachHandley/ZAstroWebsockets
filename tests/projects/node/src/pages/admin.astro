@@ -1,0 +1,227 @@
+---
+import { WebSocketStats } from 'zastro-websockets-node';
+
+const stats = WebSocketStats.getConnectionStats();
+---
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebSocket Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .connections-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .connections-table th,
+        .connections-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .connections-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .connections-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .action-buttons {
+            margin: 20px 0;
+        }
+        .btn {
+            background-color: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn:hover {
+            background-color: #5a6fd8;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+        }
+        .btn-danger:hover {
+            background-color: #d62c1a;
+        }
+        .status-open { color: #27ae60; }
+        .status-connecting { color: #f39c12; }
+        .status-closing { color: #e67e22; }
+        .status-closed { color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Admin Dashboard</h1>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div>Active Connections</div>
+            <div class="stat-number">{stats.totalConnections}</div>
+        </div>
+        <div class="stat-card">
+            <div>Total Connections Ever</div>
+            <div class="stat-number">{stats.totalConnectionsEver}</div>
+        </div>
+        <div class="stat-card">
+            <div>Connections Closed</div>
+            <div class="stat-number">{stats.totalConnectionsClosed}</div>
+        </div>
+        <div class="stat-card">
+            <div>Average Age</div>
+            <div class="stat-number">{Math.round(stats.averageAge / 1000)}s</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Connection States</h2>
+        <div class="stats-grid">
+            <div>
+                <strong>OPEN:</strong> <span class="status-open">{stats.connectionsByState.OPEN}</span>
+            </div>
+            <div>
+                <strong>CONNECTING:</strong> <span class="status-connecting">{stats.connectionsByState.CONNECTING}</span>
+            </div>
+            <div>
+                <strong>CLOSING:</strong> <span class="status-closing">{stats.connectionsByState.CLOSING}</span>
+            </div>
+            <div>
+                <strong>CLOSED:</strong> <span class="status-closed">{stats.connectionsByState.CLOSED}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Administrative Actions</h2>
+        <div class="action-buttons">
+            <button class="btn" onclick="refreshStats()">Refresh Stats</button>
+            <button class="btn" onclick="cleanupStale()">Cleanup Stale</button>
+            <button class="btn btn-danger" onclick="closeAllConnections()">Close All Connections</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Active Connections ({stats.totalConnections})</h2>
+        {stats.connections.length > 0 ? (
+            <table class="connections-table">
+                <thead>
+                    <tr>
+                        <th>Connection ID</th>
+                        <th>Age</th>
+                        <th>Idle Time</th>
+                        <th>State</th>
+                        <th>Remote Address</th>
+                        <th>User Agent</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {stats.connections.map((conn) => (
+                        <tr>
+                            <td>{conn.id}</td>
+                            <td>{Math.round(conn.age / 1000)}s</td>
+                            <td>{Math.round(conn.idleTime / 1000)}s</td>
+                            <td class={`status-${conn.state.toLowerCase()}`}>{conn.state}</td>
+                            <td>{conn.remoteAddress || 'Unknown'}</td>
+                            <td>{conn.userAgent ? conn.userAgent.substring(0, 50) + '...' : 'Unknown'}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        ) : (
+            <p>No active connections</p>
+        )}
+    </div>
+
+    <script>
+        async function refreshStats() {
+            window.location.reload();
+        }
+
+        async function cleanupStale() {
+            try {
+                const response = await fetch('/api/admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action: 'cleanup_stale' })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function closeAllConnections() {
+            if (!confirm('Are you sure you want to close all WebSocket connections?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ action: 'close_all' })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

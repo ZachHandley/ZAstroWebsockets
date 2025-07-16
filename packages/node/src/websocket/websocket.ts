@@ -97,7 +97,7 @@ export class WebSocket extends EventTarget implements WebSocketInterface {
     }
 }
 
-function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
+function attachImpl(standard: WebSocket, ws: ws.WebSocket, req?: import('node:http').IncomingMessage): void {
     // Use a WeakMap to store private WebSocket instances
     if (wsMap.has(standard)) {
         throw new Error("WebSocket already attached")
@@ -161,8 +161,8 @@ export class CloseEvent extends Event implements globalThis.CloseEvent {
     }
 }
 
-export function attach(standard: WebSocket, ws: ws.WebSocket): void {
-    return attacher.attach?.(standard, ws)
+export function attach(standard: WebSocket, ws: ws.WebSocket, req?: import('node:http').IncomingMessage): void {
+    return attacher.attach?.(standard, ws, req)
 }
 
 interface CloseEventInit extends EventInit {

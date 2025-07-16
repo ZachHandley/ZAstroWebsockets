@@ -32,6 +32,8 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
+    "postinstall": "git submodule update --init --recursive && cd astro-upstream && git fetch && git checkout $(git tag --list '@astrojs/node@*' | sort -V | tail -1)",
+    "setup:adapters": "cd astro-upstream && git fetch",
     "build": "pnpm run build:adapters && pnpm run build:packages",
     "build:adapters": "node scripts/build-patched-adapters.js",
     "build:packages": "pnpm -r run build",
@@ -41,6 +43,8 @@
     "test:cloudflare": "pnpm install && pnpm run build && cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
     "test": "pnpm install && pnpm run build && pnpm run test:node && pnpm run test:cloudflare",
     "sync-version": "node scripts/sync-version.js",
+    "setup:node": "cd astro-upstream && git fetch && git checkout $(git tag --list '@astrojs/node@*' | sort -V | tail -1)",
+    "setup:cloudflare": "cd astro-upstream && git fetch && git checkout $(git tag --list '@astrojs/cloudflare@*' | sort -V | tail -1)",
     "publish:packages": "pnpm -r publish"
   },
   "engines": {

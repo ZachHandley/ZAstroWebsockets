@@ -1,5 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import * as ws from 'ws'
+import { WebSocket } from './websocket.js'
+import { attach } from './attach.js'
+import { UpgradeResponse } from './response.js'
 
 // Type definitions for Vite dev server
 export interface ViteDevServer {
@@ -25,6 +28,9 @@ const upgradeRequestStorage = new AsyncLocalStorage<[
   head: Buffer
 ]>()
 
+// Map to track pending WebSocket upgrade responses
+const responseToSocketMap = new WeakMap<Response, WebSocket>()
+
 /**
  * Development middleware for handling WebSocket upgrade requests
  */
@@ -48,8 +54,32 @@ export const onRequest = async function websocketDevMiddleware(
     return next()
   }
 
-  // This is an upgrade request - the actual handling happens in the upgrade event handler
-  return new Response(null, { status: 101 })
+  // This is an upgrade request - set up the upgrade handler
+  const [wsServer, req, socket, head] = upgradeRequest
+
+  // Set up locals for upgrade request
+  context.locals.isUpgradeRequest = true
+  context.locals.upgradeWebSocket = () => {
+    const webSocket = new WebSocket()
+    const response = new UpgradeResponse()
+    responseToSocketMap.set(response, webSocket)
+    return { socket: webSocket, response }
+  }
+
+  // Process the request and get the response
+  const response = await next()
+
+  // If this is an upgrade response, handle the WebSocket upgrade
+  if (response instanceof UpgradeResponse) {
+    const webSocket = responseToSocketMap.get(response)
+    if (webSocket) {
+      wsServer.handleUpgrade(req, socket, head, (ws) => {
+        attach(webSocket, ws, req)
+      })
+    }
+  }
+
+  return response
 }
 
 /**

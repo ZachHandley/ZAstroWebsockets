@@ -1,8 +1,8 @@
 packages:
-  - "packages/*"
-  - "tests/projects/*"
-
+  - packages/*
+  - tests/projects/*
 onlyBuiltDependencies:
   - bufferutil
   - esbuild
   - sharp
+  - workerd

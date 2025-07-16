@@ -207,3 +207,63 @@ declare global {
 
 // Re-export our WebSocket interface as WebSocket for compatibility
 export type WebSocket = ZastroWebSocket
+
+/**
+ * WebSocket connection statistics and management
+ */
+export interface WebSocketStatsAPI {
+  /**
+   * Get total number of active connections
+   */
+  getConnectionCount(): number
+
+  /**
+   * Get detailed connection statistics
+   */
+  getConnectionStats(): {
+    totalConnections: number
+    totalConnectionsEver: number
+    totalConnectionsClosed: number
+    averageAge: number
+    averageIdleTime: number
+    connectionsByState: {
+      CONNECTING: number
+      OPEN: number
+      CLOSING: number
+      CLOSED: number
+    }
+    connections: Array<{
+      id: string
+      age: number
+      idleTime: number
+      state: string
+      remoteAddress?: string
+      userAgent?: string
+    }>
+  }
+
+  /**
+   * Get set of active WebSocket instances
+   */
+  getActiveConnections(): Set<ZastroWebSocket>
+
+  /**
+   * Close all active connections
+   */
+  closeAllConnections(code?: number, reason?: string): void
+
+  /**
+   * Graceful shutdown of connection manager
+   */
+  shutdown(): void
+
+  /**
+   * Clean up stale connections
+   */
+  cleanupStaleConnections(): number
+
+  /**
+   * Check if stats manager is shutdown
+   */
+  readonly isShutDown: boolean
+}
