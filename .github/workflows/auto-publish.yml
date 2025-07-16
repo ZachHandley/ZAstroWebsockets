@@ -101,6 +101,13 @@ jobs:
           
           echo "Checking out main branch for full repo structure..."
           git checkout main
+          
+          echo "Installing astro-upstream dependencies..."
+          pnpm install
+          
+          echo "Building adapters in astro-upstream..."
+          pnpm run build --filter="@astrojs/node" --filter="@astrojs/cloudflare"
+          
           cd ..
           
           echo "Building with current setup..."
