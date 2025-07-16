@@ -88,17 +88,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Setup adapters and test builds
+      - name: Setup latest adapters and build
         run: |
-          echo "Setting up Node.js adapter..."
-          pnpm run setup:node
-          echo "Testing Node.js adapter build..."
-          pnpm run test:node
+          echo "Fetching latest adapter tags..."
+          cd astro-upstream && git fetch --tags
           
-          echo "Setting up Cloudflare adapter..."
-          pnpm run setup:cloudflare  
-          echo "Testing Cloudflare adapter build..."
-          pnpm run test:cloudflare
+          echo "Finding latest node and cloudflare versions..."
+          NODE_TAG=$(git tag --list '@astrojs/node@*' | sort -V | tail -1)
+          CF_TAG=$(git tag --list '@astrojs/cloudflare@*' | sort -V | tail -1)
+          echo "Latest Node.js adapter: $NODE_TAG"
+          echo "Latest Cloudflare adapter: $CF_TAG"
+          
+          echo "Checking out main branch for full repo structure..."
+          git checkout main
+          cd ..
+          
+          echo "Building with current setup..."
+          pnpm run build
+          
+          echo "Testing both adapters..."
+          pnpm run test:node && pnpm run test:cloudflare
 
       - name: Update version in package.json
         run: |
