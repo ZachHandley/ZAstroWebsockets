@@ -28,7 +28,7 @@ new file mode 100644
 index 000000000..b4a4e9c0c
 --- /dev/null
 +++ b/packages/integrations/cloudflare/src/websocket/middleware.ts
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,84 @@
 +/**
 + * Cloudflare WebSocket middleware
 + */
@@ -118,7 +118,7 @@ new file mode 100644
 index 000000000..3e5b5ae7e
 --- /dev/null
 +++ b/packages/integrations/cloudflare/src/websocket/server.ts
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,102 @@
 +/**
 + * Cloudflare WebSocket server entrypoint
 + */

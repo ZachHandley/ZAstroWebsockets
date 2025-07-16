@@ -90,3 +90,13 @@ declare global {
   var WebSocketPair: {
     new (): WebSocketPair
   }
+
+  interface CloudflareWebSocket {
+    send(data: string | ArrayBufferLike | ArrayBufferView): void
+    close(code?: number, reason?: string): void
+    addEventListener(type: 'message', listener: (event: { data: any }) => void): void
+    addEventListener(type: 'close', listener: (event: { code: number; reason: string; wasClean: boolean }) => void): void
+    addEventListener(type: 'error', listener: (event: any) => void): void
+    accept(): void
+  }
+}
