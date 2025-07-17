@@ -134,7 +134,7 @@ jobs:
       - name: Publish packages to npm
         run: pnpm run publish:packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
 
       - name: Commit built packages (after successful publish)
         run: |
