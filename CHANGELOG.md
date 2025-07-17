@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.0-5ec5088] - 2025-07-17
+
+### Updated
+- Updated to Astro 0.0.0
+- Synced with upstream Astro repository
+
+
 All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2025-01-14

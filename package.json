@@ -2,7 +2,7 @@
   "name": "zastro-websockets",
   "type": "module",
   "description": "Use WebSockets in your Astro SSR Apps - Monorepo containing Node.js and Cloudflare adapters",
-  "version": "1.0.0",
+  "version": "0.0.0-5ec5088",
   "license": "MIT",
   "author": "Zach Handley",
   "keywords": [
