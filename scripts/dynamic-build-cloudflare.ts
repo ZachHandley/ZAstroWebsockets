@@ -5,7 +5,7 @@
  * Follows the 5-step process: copy upstream → modify local → update package.json → install deps → build
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, rmSync, readdirSync, statSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 

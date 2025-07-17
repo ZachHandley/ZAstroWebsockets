@@ -169,125 +169,150 @@ declare global {
 }
 ```
 
-## How the Adapter Patches Work
+## How the Dynamic Build System Works
+
+### Modern Code-Transformation Approach
+
+Instead of maintaining fragile patch files, **ZAstroWebsockets uses a modern dynamic build system** that applies WebSocket modifications as **code transformations** directly to the upstream Astro source code.
 
 ### Node.js Adapter Architecture
 
-The Node.js adapter patch consists of a **single comprehensive patch** that integrates WebSocket support:
+The Node.js adapter build system performs **live code modifications** to integrate WebSocket support:
 
-#### Patch Structure
-```
-patches/node/v5/websocket-support.patch
-```
+#### Build Process Steps
 
-#### What the Patch Does
+1. **Copy Upstream Source**
+   - Copies fresh source from `astro-upstream/packages/integrations/node/`
+   - Maintains sync with latest Astro releases
 
-1. **Adds WebSocket Dependencies**
-   - Adds `ws` and `@types/ws` to package.json
-   - Integrates WebSocket server with existing HTTP server
+2. **Apply Code Transformations**
+   - **Modifies `serve-app.ts`**: Adds WebSocket upgrade handling
+   - **Modifies `standalone.ts`**: Integrates WebSocket server with HTTP server
+   - **Modifies `types.ts`**: Exports WebSocket types
+   - **Modifies `index.ts`**: Updates package name references
+   - **Creates WebSocket Files**: Complete WebSocket implementation
 
-2. **WebSocket Server Integration**
+3. **WebSocket Server Integration**
    ```typescript
-   // Creates WebSocket server alongside HTTP server
+   // Dynamically injected into serve-app.ts
    const wsServer = new ws.WebSocketServer({ noServer: true })
    
    // Handles HTTP upgrade requests
    httpServer.on('upgrade', (req, socket, head) => {
      wsServer.handleUpgrade(req, socket, head, (ws) => {
-       // Attach WebSocket to standardized interface
        attach(websocket, ws, metadata)
      })
    })
    ```
 
-3. **WebSocket Wrapper Implementation**
-   - **File**: `src/adapters/patched/node/websocket/websocket.ts`
-   - **Purpose**: Provides browser-compatible WebSocket API
-   - **Features**: Event handling, message sending, connection state management
+4. **Generated WebSocket Files**
+   - **`websocket/index.ts`**: Main WebSocket wrapper with browser-compatible API
+   - **`websocket/stats.ts`**: Connection tracking and statistics
+   - **`websocket/connection-manager.ts`**: Advanced connection lifecycle management
+   - **`websocket/attach.ts`**: WebSocket attachment utilities
+   - **`websocket/dev-middleware.ts`**: Development server integration
+   - **`websocket/serve-websocket.ts`**: Production server integration
 
-4. **Connection Management**
-   - **Basic Stats**: `src/websocket/stats.ts` - Basic connection tracking and statistics
-   - **Advanced Manager**: `src/websocket/connection-manager.ts` - Comprehensive connection lifecycle management
-   - **Features**: 
-     - Connection tracking with metadata (IP, User-Agent)
-     - Connection pooling and limits
-     - Rate limiting per IP address
-     - Health monitoring and checks
-     - Background cleanup services
-     - Event-driven architecture
-     - Graceful shutdown coordination
-     - Custom cleanup policies
-
-5. **Development vs Production**
-   - **Development**: Uses `dev-middleware.ts` for Vite integration
-   - **Production**: Uses `serve-websocket.ts` for standalone server
+5. **Package Configuration**
+   - **Adds Dependencies**: `ws@^8.18.0` and `@types/ws@^8.5.12`
+   - **Adds Exports**: `./websocket` and `./stats` exports
+   - **Resolves Workspace Deps**: Converts `@astrojs/internal-helpers@workspace:*` to actual versions
 
 ### Cloudflare Adapter Architecture
 
-The Cloudflare adapter uses a **single comprehensive patch** that integrates WebSocket support:
+The Cloudflare adapter uses the same **dynamic transformation approach**:
 
-#### Patch Structure
-```
-patches/cloudflare/v5/cloudflare-websocket-support.patch
-```
+#### Build Process Steps
 
-#### What the Patch Does
+1. **Copy Upstream Source**
+   - Copies fresh source from `astro-upstream/packages/integrations/cloudflare/`
+   - Maintains compatibility with Cloudflare Workers runtime
 
-1. **Adds WebSocket Export**
-   - Adds `./websocket` export to package.json
-   - Enables access to WebSocket utilities
+2. **Apply Code Transformations**
+   - **Modifies `index.ts`**: Updates package name references
+   - **Creates WebSocket Files**: Cloudflare Workers-specific implementation
 
-2. **WebSocket Implementation**
+3. **WebSocket Implementation**
    ```typescript
-   // Uses Cloudflare's WebSocketPair API
-   const { 0: client, 1: server } = new WebSocketPair()
-   
-   // Create upgrade response
-   const response = createWebSocketResponse(client)
-   
-   // Return wrapped server socket
-   return { socket: new CloudflareWebSocket(server), response }
+   // Dynamically generated in websocket/index.ts
+   export function upgradeWebSocket(): WebSocketUpgrade {
+     // Uses Cloudflare's WebSocketPair API
+     const { 0: client, 1: server } = new WebSocketPair()
+     
+     // Create upgrade response
+     const response = createWebSocketResponse(client)
+     
+     // Return wrapped server socket
+     return { socket: new CloudflareWebSocket(server), response }
+   }
    ```
 
-3. **Development vs Production**
-   - **Development**: Uses `DevWebSocket` with echo functionality
-   - **Production**: Uses native Cloudflare WebSocket API
-   - **Middleware**: Auto-runs on dev server for seamless development
+4. **Generated WebSocket Files**
+   - **`websocket/index.ts`**: Main WebSocket implementation for Cloudflare Workers
+   - **`websocket/response.ts`**: HTTP upgrade response handling
+   - **`websocket/websocket.ts`**: WebSocket wrapper classes
+   - **`websocket/dev-middleware.ts`**: Development server simulation
 
-4. **WebSocket Wrapper Classes**
+5. **WebSocket Wrapper Classes**
    - **`CloudflareWebSocket`**: Production wrapper for native WebSocket
    - **`DevWebSocket`**: Development simulation with same API
    - **`UpgradeResponse`**: Proper HTTP 101 upgrade response
 
-### Build Process
+### Build System Architecture
 
-The build process applies patches automatically:
+The build system uses **3 main scripts**:
 
-```javascript
-// scripts/build-patched-adapters.js
-const patches = {
-  node: 'patches/node/v5/websocket-support.patch',
-  cloudflare: 'patches/cloudflare/v5/cloudflare-websocket-support.patch'
+```typescript
+// scripts/dynamic-build.ts - Main orchestrator
+export function buildAll() {
+  // 1. Clean and prepare upstream
+  // 2. Install upstream dependencies
+  // 3. Build Node.js adapter
+  // 4. Build Cloudflare adapter
+  // 5. Copy README.md to packages
 }
 
-// 1. Apply patches to astro-upstream submodule
-// 2. Build patched adapters
-// 3. Copy to dist directory
-// 4. Export through package.json
+// scripts/dynamic-build-node.ts - Node.js specific
+export function buildNodeAdapter() {
+  // 1. Copy upstream source
+  // 2. Apply all WebSocket modifications
+  // 3. Update package.json and resolve dependencies
+  // 4. Build TypeScript locally
+}
+
+// scripts/dynamic-build-cloudflare.ts - Cloudflare specific  
+export function buildCloudflareAdapter() {
+  // 1. Copy upstream source
+  // 2. Apply WebSocket modifications
+  // 3. Update package.json
+  // 4. Build TypeScript locally
+}
 ```
 
-### Version Management
+### Automatic Version Management
 
-The package uses automatic version syncing with the Astro submodule:
+The build system uses **adapter-specific versioning**:
 
 ```javascript
-// scripts/sync-version.js
-const astroVersion = getAstroVersion()
-const submoduleCommit = getSubmoduleCommit()
-const newVersion = `${astroVersion}-${submoduleCommit.substring(0, 7)}`
+// GitHub Actions workflow
+const nodeAdapterVersion = require('./packages/integrations/node/package.json').version
+const cloudflareAdapterVersion = require('./packages/integrations/cloudflare/package.json').version
+const ourCommit = process.env.GITHUB_SHA.substring(0, 7)
 
-// Version format: 5.7.13-2dbf999
+// Version format: 8.3.4-abc1234 (adapter version + our commit)
+const finalVersion = `${nodeAdapterVersion}-${ourCommit}`
 ```
+
+### Key Advantages of Dynamic Build System
+
+| Aspect | Old Patch System | New Dynamic System |
+|--------|------------------|-------------------|
+| **Reliability** | Patches break on updates | Code transformations adapt |
+| **Maintenance** | Manual patch updates | Automated code generation |
+| **Debugging** | Patch application errors | Clear TypeScript errors |
+| **Dependency Management** | Workspace conflicts | Isolated local dependencies |
+| **Build Speed** | Slow patch application | Fast code transformations |
+| **Flexibility** | Limited to patch changes | Full code control |
 
 
 ## Migration from Official Adapters
@@ -538,19 +563,21 @@ zastro-websockets/
 ├── scripts/                     # Build automation scripts
 │   ├── dynamic-build.ts        # Main build orchestrator
 │   ├── dynamic-build-node.ts   # Node.js adapter build script
-│   └── dynamic-build-cloudflare.ts # Cloudflare adapter build script
+│   ├── dynamic-build-cloudflare.ts # Cloudflare adapter build script
+│   └── reset-submodule.ts      # Submodule management
 └── tests/projects/             # Test projects for both adapters
 ```
 
 #### 2. Build Process Overview
 
-The build system uses a **5-step process** for each adapter:
+The build system uses a **6-step process** for each adapter:
 
-1. **Copy Upstream** → Copy source files from `astro-upstream/packages/integrations/[adapter]` to `packages/[adapter]/`
-2. **Apply Modifications** → Apply all WebSocket patch modifications as code transformations
-3. **Update Package.json** → Change package name and add WebSocket dependencies
-4. **Install Dependencies** → Install dependencies in the local copy
-5. **Build Locally** → Compile TypeScript to create the final `dist/` folder
+1. **Copy Upstream Source** → Copy source files from `astro-upstream/packages/integrations/[adapter]` to `packages/[adapter]/`
+2. **Apply Code Transformations** → Apply all WebSocket modifications as live code transformations
+3. **Update Package.json** → Change package name, add WebSocket dependencies, resolve workspace dependencies
+4. **Install Dependencies** → Install dependencies in upstream workspace (with `--no-frozen-lockfile`)
+5. **Build Upstream** → Compile TypeScript in upstream workspace
+6. **Copy Built Files** → Copy compiled `dist/` and modified `package.json` to final packages + README.md
 
 #### 3. Key Build Scripts
 
@@ -561,29 +588,25 @@ The build system uses a **5-step process** for each adapter:
 
 **Node.js Build: `scripts/dynamic-build-node.ts`**
 - Copies upstream Node.js adapter source
-- Applies all WebSocket modifications from the original patch
+- Applies all WebSocket modifications as code transformations
 - Creates WebSocket files: `websocket/`, `middleware/`
-- Adds `ws` dependency and WebSocket exports
-- Builds standalone TypeScript project
+- Adds `ws` dependency and WebSocket exports (`./websocket`, `./stats`)
+- Resolves workspace dependencies to actual versions
+- Builds in upstream workspace, then copies to final package
 
 **Cloudflare Build: `scripts/dynamic-build-cloudflare.ts`**
 - Copies upstream Cloudflare adapter source  
 - Applies WebSocket modifications for Cloudflare Workers
 - Creates WebSocket files and entrypoint modifications
 - Adds WebSocket export to package.json
-- Builds standalone TypeScript project
+- Resolves workspace dependencies to actual versions
+- Builds in upstream workspace, then copies to final package
 
 #### 4. Available Scripts
 
 ```bash
 # Full build process (recommended)
 pnpm run build
-
-# Build only upstream Astro (without adapters)
-pnpm run build:upstream
-
-# Build only the adapters (after upstream is built)
-pnpm run build:adapters
 
 # Test the Node.js adapter
 pnpm run test:node
@@ -594,27 +617,51 @@ pnpm run test:cloudflare
 # Test both adapters
 pnpm run test
 
-# Reset the astro-upstream submodule
+# Reset the astro-upstream submodule to latest Astro tag
 pnpm run reset
+
+# Publish packages to npm (CI only)
+pnpm run publish:packages
 ```
 
-#### 5. How Patches Are Applied
+#### 5. Automated CI/CD Pipeline
 
-Instead of using Git patches, the build system applies modifications **as code transformations**:
+The project uses **GitHub Actions** for automated building and publishing:
 
-**For Node.js Adapter:**
-- Modifies `serve-app.ts` to add WebSocket upgrade handling
-- Modifies `standalone.ts` to add WebSocket server integration
-- Modifies `types.ts` to export WebSocket types
-- Modifies `index.ts` to change package name references
-- Creates complete WebSocket implementation files
+**Workflow: `.github/workflows/auto-publish.yml`**
+- **Triggers**: Push to main, daily at 2 AM UTC, or manual dispatch
+- **Process**:
+  1. Checks out latest Astro tag from submodule
+  2. Installs dependencies with workspace filtering
+  3. Builds both adapters with dynamic build system
+  4. Tests both adapters
+  5. Updates package versions to `{adapter-version}-{commit-hash}`
+  6. Publishes to npm with automation tokens
+  7. Commits built packages to repo
+  8. Creates GitHub release with version tag
 
-**For Cloudflare Adapter:**
-- Modifies `index.ts` to change package name references
-- Creates WebSocket implementation files for Cloudflare Workers
-- Adds WebSocket export to package.json
+**Version Strategy**:
+- Uses **adapter-specific versions** (not Astro core version)
+- Format: `8.3.4-abc1234` (Node adapter v8.3.4 + commit abc1234)
+- Allows patch releases for fixes without waiting for Astro updates
 
-#### 6. Development Workflow
+#### 6. Key Features of Build System
+
+**Workspace Dependency Resolution**:
+- Automatically converts `@astrojs/internal-helpers@workspace:*` to actual versions
+- Maps packages to correct workspace locations
+- Handles complex monorepo dependency resolution
+
+**README.md Distribution**:
+- Automatically copies root README.md to each package
+- Ensures npm packages have proper documentation
+
+**Authentication & Publishing**:
+- Uses npm automation tokens for 2FA bypass
+- Creates `.npmrc` files in package directories
+- Publishes to npm with proper access controls
+
+#### 7. Development Workflow
 
 1. **Make Changes to Build Scripts**
    - Edit `scripts/dynamic-build-node.ts` for Node.js changes
@@ -630,50 +677,57 @@ Instead of using Git patches, the build system applies modifications **as code t
    - Check `packages/node/` and `packages/cloudflare/` for generated files
    - Review TypeScript errors in build output
    - Verify WebSocket files are created correctly
+   - Check workspace dependency resolution
 
 4. **Update Tests**
    - Test projects are in `tests/projects/`
    - Update test projects to match API changes
 
-#### 7. Key Differences from Patch-Based Approach
+#### 8. Key Differences from Patch-Based Approach
 
 | Aspect | Old Patch System | New Dynamic System |
 |--------|------------------|-------------------|
 | **Modification Method** | Git patches | Code transformations |
-| **Build Location** | Upstream directory | Local packages/ directory |
-| **Dependency Management** | Workspace conflicts | Isolated local dependencies |
-| **TypeScript Compilation** | Upstream tsconfig | Custom standalone tsconfig |
+| **Build Location** | Upstream directory | Upstream → Local packages |
+| **Dependency Management** | Workspace conflicts | Automated workspace resolution |
+| **TypeScript Compilation** | Upstream tsconfig | Upstream build → Copy dist |
 | **Maintenance** | Manual patch updates | Automated code generation |
 | **Debugging** | Patch application errors | Clear TypeScript errors |
+| **CI/CD** | Manual publishing | Automated GitHub Actions |
 
-#### 8. Adding New Features
+#### 9. Adding New Features
 
 To add new WebSocket features:
 
 1. **Update the build scripts** to include your new files/modifications
 2. **Add the files to the appropriate `createWebSocketFiles()` function**
-3. **Update package.json exports** if needed
+3. **Update package.json exports** if needed in `updateUpstreamPackageJson()`
 4. **Test the build process** with `pnpm run build`
 5. **Update the test projects** to demonstrate the new features
 
-#### 9. Troubleshooting Development Issues
+#### 10. Troubleshooting Development Issues
 
-**Build Fails with TypeScript Errors:**
-- Check that all imports are correctly resolved
-- Verify workspace dependencies are properly linked
-- Ensure tsconfig.json has correct module resolution
+**Build Fails with Workspace Dependency Errors:**
+- Check that workspace dependency mapping is correct
+- Verify that upstream packages exist at expected paths
+- Ensure `--no-frozen-lockfile` is used in CI
 
 **Missing WebSocket Files:**
 - Check that `createWebSocketFiles()` creates all necessary files
 - Verify file paths and exports are correct
 - Ensure TypeScript compilation includes all source files
 
-**Dependency Resolution Issues:**
-- Verify that `@astrojs/internal-helpers` is properly linked
-- Check that all required dependencies are installed
-- Ensure package.json has correct dependency versions
+**Publishing Fails with ENEEDAUTH:**
+- Verify npm automation token is stored as repository secret
+- Check that `.npmrc` files are created in package directories
+- Ensure registry-url is set correctly in GitHub Actions
 
-This dynamic build system eliminates the need for manual patch management while providing more flexibility and reliability than the previous patch-based approach.
+**Version Mismatch Issues:**
+- Verify that adapter versions are read from correct package.json paths
+- Check that version update logic handles different adapter versions
+- Ensure commit hash is properly extracted
+
+This dynamic build system eliminates the need for manual patch management while providing automated CI/CD and reliable publishing to npm.
 
 ## License
 
