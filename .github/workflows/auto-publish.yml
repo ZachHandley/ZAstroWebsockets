@@ -78,6 +78,8 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
 
       - name: Initialize submodule and update to latest Astro tag
         run: |

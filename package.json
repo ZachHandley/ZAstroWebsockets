@@ -44,7 +44,7 @@
     "test:cloudflare": "cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
     "test": "pnpm run test:node && pnpm run test:cloudflare",
     "sync-version": "node scripts/sync-version.js",
-    "publish:packages": "cd packages/node && npm publish --access public && cd ../cloudflare && npm publish --access public"
+    "publish:packages": "npm publish --workspace packages/node --access public && npm publish --workspace packages/cloudflare --access public"
   },
   "engines": {
     "node": ">=18.0.0"
