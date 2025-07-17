@@ -89,7 +89,9 @@ jobs:
           LATEST_ASTRO_TAG=$(git tag -l "astro@*" | sort -V | tail -1)
           echo "Updating to latest Astro tag: $LATEST_ASTRO_TAG"
           git checkout "$LATEST_ASTRO_TAG"
-          pnpm install --ignore-scripts
+          cd ..
+          # Install dependencies but exclude our generated packages
+          pnpm install --ignore-scripts --filter='!zastro-websockets-node' --filter='!zastro-websockets-cloudflare'
 
       - name: Build and test adapters
         run: |

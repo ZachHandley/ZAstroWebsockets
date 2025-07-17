@@ -4,11 +4,11 @@
   "version": "9.3.0",
   "type": "module",
   "types": "./dist/index.d.ts",
-  "author": "withastro",
+  "author": "Zach Handley <zach@zachhandley.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zach-planet-nine/ZAstroWebsockets.git"
+    "url": "https://github.com/zachhandley/ZAstroWebsockets.git"
   },
   "keywords": [
     "withastro",
@@ -20,7 +20,8 @@
     "./server.js": "./dist/server.js",
     "./preview.js": "./dist/preview.js",
     "./package.json": "./package.json",
-    "./websocket": "./dist/websocket/index.js"
+    "./websocket": "./dist/websocket/index.js",
+    "./stats": "./dist/websocket/stats.js"
   },
   "files": [
     "dist"
