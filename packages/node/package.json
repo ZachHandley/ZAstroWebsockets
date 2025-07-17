@@ -1,7 +1,7 @@
 {
   "name": "zastro-websockets-node",
   "description": "Deploy your site to a Node.js server with WebSocket support",
-  "version": "0.0.0-729d313",
+  "version": "0.0.0-e6992d0",
   "type": "module",
   "types": "./dist/index.d.ts",
   "author": "Zach Handley <zach@zachhandley.com>",
