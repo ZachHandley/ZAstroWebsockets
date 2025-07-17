@@ -24,6 +24,10 @@ export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir:
     console.log('📝 Step 2: Updating package.json in upstream adapter')
     updateUpstreamPackageJson(upstreamCloudflareDir)
     
+    // Step 2.1: Install dependencies in upstream workspace (allow lockfile updates)
+    console.log('📦 Step 2.1: Installing dependencies in upstream workspace')
+    execSync('pnpm install --no-frozen-lockfile', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    
     // Step 3: Build in upstream workspace
     console.log('🏗️ Step 3: Building in upstream workspace')
     execSync('pnpm run build --filter @astrojs/cloudflare', { cwd: astroUpstreamDir, stdio: 'inherit' })

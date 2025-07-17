@@ -28,9 +28,9 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
     console.log('📝 Step 2: Updating package.json in upstream adapter')
     updateUpstreamPackageJson(upstreamNodeDir)
     
-    // Step 2.1: Install dependencies in upstream workspace
+    // Step 2.1: Install dependencies in upstream workspace (allow lockfile updates)
     console.log('📦 Step 2.1: Installing dependencies in upstream workspace')
-    execSync('pnpm install', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    execSync('pnpm install --no-frozen-lockfile', { cwd: astroUpstreamDir, stdio: 'inherit' })
     
     // Step 3: Build in upstream workspace
     console.log('🏗️ Step 3: Building in upstream workspace')
