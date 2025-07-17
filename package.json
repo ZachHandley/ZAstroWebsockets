@@ -43,7 +43,7 @@
     "test:node": "cd ./tests/projects/node && pnpm install && pnpm run build && cd ../../..",
     "test:cloudflare": "cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
     "test": "pnpm run test:node && pnpm run test:cloudflare",
-    "sync-version": "node scripts/sync-version.js",
+    "sync-version": "node scripts/sync-version.cjs",
     "publish:packages": "npm publish --workspace packages/node --access public && npm publish --workspace packages/cloudflare --access public"
   },
   "engines": {

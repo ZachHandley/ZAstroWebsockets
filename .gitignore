@@ -18,8 +18,7 @@ tmp/
 # Build-generated files (copied from astro-upstream during build)
 src/adapters/patched/
 astro-upstream/
-packages/node/
-packages/cloudflare
+packages/**
 packages/node/tsconfig.json
 packages/cloudflare/tsconfig.json
 

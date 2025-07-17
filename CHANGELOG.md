@@ -3,9 +3,8 @@
 ## [0.0.0-5ec5088] - 2025-07-17
 
 ### Updated
-- Updated to Astro 0.0.0
+- Updated to Astro current version adapters
 - Synced with upstream Astro repository
-
 
 All notable changes to this project will be documented in this file.
 

@@ -47,12 +47,15 @@ jobs:
           NEW_VERSION="${ASTRO_VERSION}-${OUR_COMMIT}"
           echo "Proposed new version: $NEW_VERSION"
           
-          # Check if this version tag already exists
-          if git tag --list | grep -q "^v${NEW_VERSION}$"; then
-            echo "Version v$NEW_VERSION already exists, skipping publish"
+          # Check if tags for this version already exist for both packages
+          NODE_TAG_EXISTS=$(git tag --list | grep -q "^node-v${NEW_VERSION}$" && echo "true" || echo "false")
+          CLOUDFLARE_TAG_EXISTS=$(git tag --list | grep -q "^cloudflare-v${NEW_VERSION}$" && echo "true" || echo "false")
+          
+          if [[ "$NODE_TAG_EXISTS" == "true" && "$CLOUDFLARE_TAG_EXISTS" == "true" ]]; then
+            echo "Both package versions already exist, skipping publish"
             echo "should-publish=false" >> $GITHUB_OUTPUT
           else
-            echo "New version v$NEW_VERSION, will publish"
+            echo "New version $NEW_VERSION, will publish"
             echo "should-publish=true" >> $GITHUB_OUTPUT
           fi
           
@@ -108,79 +111,85 @@ jobs:
         run: |
           pnpm run build
 
-      - name: Update package versions
+      - name: Update package versions and get individual versions
+        id: versions
         run: |
-          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
-          echo "Updating package versions to $NEW_VERSION"
+          # Use sync-version script to update all packages consistently
+          npm run sync-version
           
-          # Update node package version (directly edit JSON, no npm install)
-          if [ -f packages/node/package.json ]; then
-            node -e "
-              const pkg = JSON.parse(require('fs').readFileSync('packages/node/package.json', 'utf8'));
-              pkg.version = '$NEW_VERSION';
-              require('fs').writeFileSync('packages/node/package.json', JSON.stringify(pkg, null, 2) + '\n');
-              console.log('Updated packages/node/package.json to version $NEW_VERSION');
-            "
-          fi
+          # Get individual package versions for tagging
+          NODE_VERSION=$(node -p "require('./packages/node/package.json').version")
+          CLOUDFLARE_VERSION=$(node -p "require('./packages/cloudflare/package.json').version")
           
-          # Update cloudflare package version (directly edit JSON, no npm install)
-          if [ -f packages/cloudflare/package.json ]; then
-            node -e "
-              const pkg = JSON.parse(require('fs').readFileSync('packages/cloudflare/package.json', 'utf8'));
-              pkg.version = '$NEW_VERSION';
-              require('fs').writeFileSync('packages/cloudflare/package.json', JSON.stringify(pkg, null, 2) + '\n');
-              console.log('Updated packages/cloudflare/package.json to version $NEW_VERSION');
-            "
-          fi
+          echo "Node package version: $NODE_VERSION"
+          echo "Cloudflare package version: $CLOUDFLARE_VERSION"
+          
+          echo "node-version=$NODE_VERSION" >> $GITHUB_OUTPUT
+          echo "cloudflare-version=$CLOUDFLARE_VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish packages to npm
         run: pnpm run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
 
-      - name: Commit built packages (after successful publish)
+      - name: Create release branches and tags for each package
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # Only commit the built packages folder, not version bumps
-          git add packages/
-          if git diff --staged --quiet; then
-            echo "No changes to built packages, skipping commit"
-          else
-            git commit -m "build: update packages for Astro ${{ needs.check-submodule.outputs.astro-version }} (${{ needs.check-submodule.outputs.new-version }})"
-            git push origin main
-          fi
+          NODE_VERSION="${{ steps.versions.outputs.node-version }}"
+          CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
           
-          # Create git tag for the release (but don't commit version changes to package.json)
-          git tag "v${{ needs.check-submodule.outputs.new-version }}"
-          git push origin "v${{ needs.check-submodule.outputs.new-version }}"
+          # Create release branch for Node.js package
+          NODE_BRANCH="releases/node-v$NODE_VERSION"
+          git checkout -b "$NODE_BRANCH"
+          git add packages/node/
+          git commit -m "release: zastro-websockets-node v$NODE_VERSION for Astro ${{ needs.check-submodule.outputs.astro-version }}"
+          git push origin "$NODE_BRANCH"
+          git tag "node-v$NODE_VERSION"
+          git push origin "node-v$NODE_VERSION"
+          
+          # Switch back to main and create release branch for Cloudflare package
+          git checkout main
+          CLOUDFLARE_BRANCH="releases/cloudflare-v$CLOUDFLARE_VERSION"
+          git checkout -b "$CLOUDFLARE_BRANCH"
+          git add packages/cloudflare/
+          git commit -m "release: zastro-websockets-cloudflare v$CLOUDFLARE_VERSION for Astro ${{ needs.check-submodule.outputs.astro-version }}"
+          git push origin "$CLOUDFLARE_BRANCH"
+          git tag "cloudflare-v$CLOUDFLARE_VERSION"
+          git push origin "cloudflare-v$CLOUDFLARE_VERSION"
 
-      - name: Create GitHub release
-        uses: actions/create-release@v1.1.4
+      - name: Create GitHub releases for each package
+        run: |
+          NODE_VERSION="${{ steps.versions.outputs.node-version }}"
+          CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
+          
+          # Create release for Node.js package
+          gh release create "node-v$NODE_VERSION" \
+            --title "Node.js Adapter v$NODE_VERSION" \
+            --notes "## Changes
+          - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
+          - Synced with upstream Astro repository
+          - Tested Node.js adapter functionality
+          
+          ## Installation
+          \`\`\`bash
+          npm install zastro-websockets-node@$NODE_VERSION
+          \`\`\`" \
+            --target "releases/node-v$NODE_VERSION"
+          
+          # Create release for Cloudflare package
+          gh release create "cloudflare-v$CLOUDFLARE_VERSION" \
+            --title "Cloudflare Adapter v$CLOUDFLARE_VERSION" \
+            --notes "## Changes
+          - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
+          - Synced with upstream Astro repository  
+          - Tested Cloudflare adapter functionality
+          
+          ## Installation
+          \`\`\`bash
+          npm install zastro-websockets-cloudflare@$CLOUDFLARE_VERSION
+          \`\`\`" \
+            --target "releases/cloudflare-v$CLOUDFLARE_VERSION"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ needs.check-submodule.outputs.new-version }}
-          release_name: Release v${{ needs.check-submodule.outputs.new-version }}
-          body: |
-            ## Changes
-            - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
-            - Synced with upstream Astro repository
-            - Tested with both Node.js and Cloudflare adapters
-            
-            ## Installation
-            ```bash
-            npm install zastro-websockets@${{ needs.check-submodule.outputs.new-version }}
-            ```
-            
-            ## Usage
-            ```bash
-            # Build adapters (generates both Node.js and Cloudflare)
-            pnpm run build
-            
-            # Test adapters
-            pnpm run test
-            ```
-          draft: false
-          prerelease: false

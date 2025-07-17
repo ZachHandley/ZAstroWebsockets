@@ -46,7 +46,11 @@ function updatePackageVersion() {
     packageJson.version = newVersion;
     fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n');
     
-    console.log(`📦 Updated version from ${currentVersion} to ${newVersion}`);
+    console.log(`📦 Updated root version from ${currentVersion} to ${newVersion}`);
+    
+    // Update individual package versions
+    updateIndividualPackageVersions(newVersion);
+    
     console.log(`🔗 Based on Astro ${astroVersion} (commit ${shortCommit})`);
     
     // Update changelog
@@ -56,6 +60,29 @@ function updatePackageVersion() {
   } catch (error) {
     console.error('Error updating package version:', error.message);
     process.exit(1);
+  }
+}
+
+function updateIndividualPackageVersions(newVersion) {
+  const packagesDir = path.join(__dirname, '../packages');
+  const packageDirs = fs.readdirSync(packagesDir).filter(dir => {
+    const packagePath = path.join(packagesDir, dir, 'package.json');
+    return fs.existsSync(packagePath);
+  });
+  
+  for (const packageDir of packageDirs) {
+    try {
+      const packagePath = path.join(packagesDir, packageDir, 'package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+      
+      const oldVersion = packageJson.version;
+      packageJson.version = newVersion;
+      
+      fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n');
+      console.log(`📦 Updated ${packageDir} version from ${oldVersion} to ${newVersion}`);
+    } catch (error) {
+      console.error(`Error updating ${packageDir} version:`, error.message);
+    }
   }
 }
 
