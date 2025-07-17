@@ -104,30 +104,84 @@ jobs:
         run: |
           pnpm run build
 
-      - name: Get individual package versions (use actual package versions, not synced)
+      - name: Get individual package versions with incremental patch numbers
         id: versions
         run: |
-          # Get the actual package versions from built packages
-          NODE_VERSION=$(node -p "require('./packages/node/package.json').version")
-          CLOUDFLARE_VERSION=$(node -p "require('./packages/cloudflare/package.json').version")
+          # Get the base package versions from built packages
+          NODE_BASE_VERSION=$(node -p "require('./packages/node/package.json').version")
+          CLOUDFLARE_BASE_VERSION=$(node -p "require('./packages/cloudflare/package.json').version")
           
-          echo "Node package version: $NODE_VERSION"
-          echo "Cloudflare package version: $CLOUDFLARE_VERSION"
+          echo "Node base version: $NODE_BASE_VERSION"
+          echo "Cloudflare base version: $CLOUDFLARE_BASE_VERSION"
           
-          # Check if tags for these versions already exist
+          # Function to get next incremental version
+          get_next_version() {
+            local base_version=$1
+            local package_name=$2
+            
+            # Find existing tags for this base version
+            local existing_tags=$(git tag --list | grep "^${package_name}-v${base_version}" | sort -V)
+            
+            if [[ -z "$existing_tags" ]]; then
+              # No existing tags, start with .1
+              echo "${base_version}.1"
+            else
+              # Get the highest patch number
+              local highest_patch=$(echo "$existing_tags" | sed "s/^${package_name}-v${base_version}\.*//" | sed 's/^${base_version}//' | sed 's/^\.//' | sort -n | tail -1)
+              if [[ -z "$highest_patch" || "$highest_patch" == "$base_version" ]]; then
+                # No patch number found, start with .1
+                echo "${base_version}.1"
+              else
+                # Increment the patch number
+                local next_patch=$((highest_patch + 1))
+                echo "${base_version}.${next_patch}"
+              fi
+            fi
+          }
+          
+          # Get incremental versions
+          NODE_VERSION=$(get_next_version "$NODE_BASE_VERSION" "node")
+          CLOUDFLARE_VERSION=$(get_next_version "$CLOUDFLARE_BASE_VERSION" "cloudflare")
+          
+          echo "Node incremental version: $NODE_VERSION"
+          echo "Cloudflare incremental version: $CLOUDFLARE_VERSION"
+          
+          # Check if these specific incremental versions already exist
           NODE_TAG_EXISTS=$(git tag --list | grep -q "^node-v${NODE_VERSION}$" && echo "true" || echo "false")
           CLOUDFLARE_TAG_EXISTS=$(git tag --list | grep -q "^cloudflare-v${CLOUDFLARE_VERSION}$" && echo "true" || echo "false")
           
           if [[ "$NODE_TAG_EXISTS" == "true" && "$CLOUDFLARE_TAG_EXISTS" == "true" ]]; then
-            echo "Both package versions already exist, skipping publish"
+            echo "Both incremental versions already exist, skipping publish"
             echo "should-publish=false" >> $GITHUB_OUTPUT
           else
-            echo "New package versions found, will publish"
+            echo "New incremental versions found, will publish"
             echo "should-publish=true" >> $GITHUB_OUTPUT
           fi
           
           echo "node-version=$NODE_VERSION" >> $GITHUB_OUTPUT
           echo "cloudflare-version=$CLOUDFLARE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json files with incremental versions
+        if: steps.versions.outputs.should-publish == 'true'
+        run: |
+          NODE_VERSION="${{ steps.versions.outputs.node-version }}"
+          CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
+          
+          # Update node package version
+          node -e "
+            const pkg = JSON.parse(require('fs').readFileSync('packages/node/package.json', 'utf8'));
+            pkg.version = '$NODE_VERSION';
+            require('fs').writeFileSync('packages/node/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Updated packages/node/package.json to version $NODE_VERSION');
+          "
+          
+          # Update cloudflare package version
+          node -e "
+            const pkg = JSON.parse(require('fs').readFileSync('packages/cloudflare/package.json', 'utf8'));
+            pkg.version = '$CLOUDFLARE_VERSION';
+            require('fs').writeFileSync('packages/cloudflare/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Updated packages/cloudflare/package.json to version $CLOUDFLARE_VERSION');
+          "
 
       - name: Publish packages to npm
         if: steps.versions.outputs.should-publish == 'true'
