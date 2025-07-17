@@ -35,18 +35,15 @@
   },
   "scripts": {
     "reset": "tsx --no-cache scripts/reset-submodule.ts",
-    "setup:adapters": "cd astro-upstream && git fetch && pnpm install && pnpm run build",
     "build": "pnpm run build:upstream && pnpm run build:adapters",
     "build:upstream": "cd astro-upstream && pnpm install && pnpm run build --filter=\"!@astrojs/node\" --filter=\"!@astrojs/cloudflare\"",
     "build:adapters": "tsx scripts/dynamic-build.ts",
     "dev": "pnpm -r run dev",
     "type-check": "pnpm -r run type-check",
-    "test:node": "pnpm run build && cd ./tests/projects/node && pnpm install && pnpm run build && cd ../../..",
-    "test:cloudflare": "pnpm run build && cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
-    "test": "pnpm run build && pnpm run test:node && pnpm run test:cloudflare",
+    "test:node": "cd ./tests/projects/node && pnpm install && pnpm run build && cd ../../..",
+    "test:cloudflare": "cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
+    "test": "pnpm run test:node && pnpm run test:cloudflare",
     "sync-version": "node scripts/sync-version.js",
-    "setup:node": "cd astro-upstream && git fetch && git checkout $(git tag --list '@astrojs/node@*' | sort -V | tail -1)",
-    "setup:cloudflare": "cd astro-upstream && git fetch && git checkout $(git tag --list '@astrojs/cloudflare@*' | sort -V | tail -1)",
     "publish:packages": "pnpm -r publish"
   },
   "engines": {

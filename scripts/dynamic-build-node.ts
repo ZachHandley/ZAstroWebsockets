@@ -232,11 +232,12 @@ function updateUpstreamPackageJson(upstreamNodeDir: string): void {
   const packageJsonPath = join(upstreamNodeDir, 'package.json')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
-  // Only add the websocket export - keep everything else unchanged
+  // Add websocket exports - keep everything else unchanged
   if (!packageJson.exports) {
     packageJson.exports = {}
   }
   packageJson.exports['./websocket'] = './dist/websocket/index.js'
+  packageJson.exports['./stats'] = './dist/websocket/stats.js'
   
   // Add WebSocket dependencies
   if (!packageJson.dependencies) {
@@ -250,8 +251,44 @@ function updateUpstreamPackageJson(upstreamNodeDir: string): void {
   }
   packageJson.devDependencies['@types/ws'] = '^8.5.12'
   
+  // Convert workspace dependencies in upstream BEFORE building
+  console.log('🔄 Converting workspace dependencies in upstream package.json before build...')
+  if (packageJson.dependencies) {
+    for (const [dep, version] of Object.entries(packageJson.dependencies)) {
+      if (version === 'workspace:*') {
+        // Map package name to workspace directory
+        let packageDir = ''
+        if (dep.startsWith('@astrojs/')) {
+          const packageName = dep.replace('@astrojs/', '')
+          if (packageName === 'internal-helpers') {
+            packageDir = 'internal-helpers'
+          } else if (packageName === 'underscore-redirects') {
+            packageDir = 'underscore-redirects'
+          } else {
+            packageDir = `integrations/${packageName}`
+          }
+        } else if (dep === 'astro') {
+          packageDir = 'astro'
+        } else if (dep === 'astro-scripts') {
+          packageDir = '../../scripts'
+        }
+        
+        if (packageDir) {
+          const depPackageJsonPath = join(upstreamNodeDir, `../../${packageDir}/package.json`)
+          if (existsSync(depPackageJsonPath)) {
+            const depPackageJson = JSON.parse(readFileSync(depPackageJsonPath, 'utf-8'))
+            packageJson.dependencies[dep] = `^${depPackageJson.version}`
+            console.log(`  ✅ Upstream: Resolved ${dep}@workspace:* → ^${depPackageJson.version}`)
+          } else {
+            console.warn(`  ⚠️ Could not find package.json for ${dep} at ${depPackageJsonPath}`)
+          }
+        }
+      }
+    }
+  }
+  
   writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
-  console.log('✅ Added websocket export and dependencies to upstream package.json')
+  console.log('✅ Updated upstream package.json with websocket exports and resolved dependencies')
 }
 
 function copyAndModifyUpstreamPackageJson(upstreamNodeDir: string, finalNodeDir: string): void {
@@ -262,9 +299,10 @@ function copyAndModifyUpstreamPackageJson(upstreamNodeDir: string, finalNodeDir:
   // Only modify what we need for our renamed package
   packageJson.name = 'zastro-websockets-node'
   packageJson.description = 'Deploy your site to a Node.js server with WebSocket support'
+  packageJson.author = 'Zach Handley <zach@zachhandley.com>'
   packageJson.repository = {
     type: 'git',
-    url: 'https://github.com/zach-planet-nine/ZAstroWebsockets.git'
+    url: 'https://github.com/zachhandley/ZAstroWebsockets.git'
   }
   
   // Add websockets keyword
@@ -272,9 +310,44 @@ function copyAndModifyUpstreamPackageJson(upstreamNodeDir: string, finalNodeDir:
     packageJson.keywords.push('websockets')
   }
   
-  // Convert workspace dependencies to actual versions
-  if (packageJson.dependencies['@astrojs/internal-helpers'] === 'workspace:*') {
-    packageJson.dependencies['@astrojs/internal-helpers'] = '^0.6.1'
+  // Convert ALL workspace dependencies to actual versions from upstream workspace
+  if (packageJson.dependencies) {
+    for (const [dep, version] of Object.entries(packageJson.dependencies)) {
+      if (version === 'workspace:*') {
+        // Map package name to workspace directory
+        let packageDir = ''
+        if (dep.startsWith('@astrojs/')) {
+          // Handle @astrojs scoped packages
+          const packageName = dep.replace('@astrojs/', '')
+          if (packageName === 'internal-helpers') {
+            packageDir = 'internal-helpers'
+          } else if (packageName === 'underscore-redirects') {
+            packageDir = 'underscore-redirects'
+          } else {
+            packageDir = `integrations/${packageName}`
+          }
+        } else if (dep === 'astro') {
+          packageDir = 'astro'
+        } else if (dep === 'astro-scripts') {
+          packageDir = '../../scripts'
+        }
+        
+        if (packageDir) {
+          const depPackageJsonPath = join(upstreamNodeDir, `../../${packageDir}/package.json`)
+          if (existsSync(depPackageJsonPath)) {
+            const depPackageJson = JSON.parse(readFileSync(depPackageJsonPath, 'utf-8'))
+            packageJson.dependencies[dep] = `^${depPackageJson.version}`
+            console.log(`  ✅ Resolved ${dep}@workspace:* → ^${depPackageJson.version}`)
+          } else {
+            console.warn(`  ⚠️ Could not find package.json for ${dep} at ${depPackageJsonPath}`)
+            delete packageJson.dependencies[dep]
+          }
+        } else {
+          console.warn(`  ⚠️ Unknown workspace package ${dep}, removing from dependencies`)
+          delete packageJson.dependencies[dep]
+        }
+      }
+    }
   }
   
   // Remove workspace-specific fields that don't apply to our standalone package

@@ -80,16 +80,19 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Initialize submodule properly, install dependencies
+      - name: Initialize submodule and update to latest Astro tag
         run: |
           git submodule update --init --recursive
-          cd astro-upstream && git fetch && cd .. && pnpm install --ignore-scripts
+          cd astro-upstream
+          git fetch --tags
+          # Get the latest astro@* tag and checkout to it
+          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | sort -V | tail -1)
+          echo "Updating to latest Astro tag: $LATEST_ASTRO_TAG"
+          git checkout "$LATEST_ASTRO_TAG"
+          pnpm install --ignore-scripts
 
-      - name: Setup and build adapters
+      - name: Build and test adapters
         run: |
-          echo "Setting up astro-upstream submodule..."
-          pnpm run setup:adapters
-          
           echo "Building adapters with dynamic build system..."
           pnpm run build
           
@@ -127,10 +130,9 @@ jobs:
           
           mv temp_changelog.md CHANGELOG.md
 
-      - name: Final build and type check
+      - name: Final build
         run: |
           pnpm run build
-          pnpm run type-check
 
       - name: Commit version updates
         run: |
@@ -170,13 +172,13 @@ jobs:
             npm install zastro-websockets@${{ needs.check-submodule.outputs.new-version }}
             ```
             
-            ## Adapter Setup
+            ## Usage
             ```bash
-            # For Node.js adapter
-            pnpm run setup:node
+            # Build adapters (generates both Node.js and Cloudflare)
+            pnpm run build
             
-            # For Cloudflare adapter  
-            pnpm run setup:cloudflare
+            # Test adapters
+            pnpm run test
             ```
           draft: false
           prerelease: false

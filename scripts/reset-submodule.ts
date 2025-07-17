@@ -46,9 +46,9 @@ try {
     // Fetch latest changes
     execSync('git fetch --all', { cwd: astroUpstreamDir, stdio: 'inherit' })
     
-    // Get latest Node.js adapter tag
-    console.log('🏷️  Checking out latest @astrojs/node tag...')
-    const latestTag = execSync('git tag --list "@astrojs/node@*" | sort -V | tail -1', { 
+    // Get latest Astro release tag
+    console.log('🏷️  Checking out latest astro tag...')
+    const latestTag = execSync('git tag --list "astro@*" | sort -V | tail -1', { 
       cwd: astroUpstreamDir, 
       encoding: 'utf-8' 
     }).trim()
@@ -56,9 +56,9 @@ try {
     if (latestTag) {
       console.log(`📌 Checking out tag: ${latestTag}`)
       execSync(`git checkout ${latestTag}`, { cwd: astroUpstreamDir, stdio: 'inherit' })
-      console.log('✅ Successfully reset to latest version')
+      console.log('✅ Successfully reset to latest Astro version')
     } else {
-      console.warn('⚠️  No @astrojs/node tags found, staying on current state')
+      console.warn('⚠️  No astro tags found, staying on current state')
     }
     
   } else {
