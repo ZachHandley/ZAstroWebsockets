@@ -80,13 +80,10 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Initialize submodule properly
+      - name: Initialize submodule properly, install dependencies
         run: |
           git submodule update --init --recursive
-          cd astro-upstream && git fetch
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+          cd astro-upstream && git fetch && cd .. && pnpm install --ignore-scripts
 
       - name: Setup and build adapters
         run: |
