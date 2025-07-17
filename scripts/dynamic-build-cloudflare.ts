@@ -42,8 +42,8 @@ export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir:
       console.log('✅ Built dist folder copied successfully')
     }
     
-    // Create final package.json for our package
-    createFinalPackageJson(finalCloudflareDir)
+    // Copy and modify upstream package.json for our package
+    copyAndModifyUpstreamPackageJson(upstreamCloudflareDir, finalCloudflareDir)
     
     console.log('✅ Cloudflare WebSocket patch applied successfully')
     
@@ -243,46 +243,39 @@ function updateUpstreamPackageJson(upstreamCloudflareDir: string): void {
   console.log('✅ Added websocket export to upstream package.json')
 }
 
-function createFinalPackageJson(finalCloudflareDir: string): void {
-  const packageJson = {
-    name: 'zastro-websockets-cloudflare',
-    description: 'Deploy your site to Cloudflare Workers/Pages with WebSocket support',
-    version: '12.6.0',
-    type: 'module',
-    types: './dist/index.d.ts',
-    author: 'withastro',
-    license: 'MIT',
-    repository: {
-      type: 'git',
-      url: 'https://github.com/zach-planet-nine/ZAstroWebsockets.git'
-    },
-    keywords: [
-      'withastro',
-      'astro-adapter',
-      'websockets',
-      'cloudflare'
-    ],
-    exports: {
-      '.': './dist/index.js',
-      './entrypoints/server.js': './dist/entrypoints/server.js',
-      './entrypoints/middleware.js': './dist/entrypoints/middleware.js',
-      './image-service': './dist/entrypoints/image-service.js',
-      './image-endpoint': './dist/entrypoints/image-endpoint.js',
-      './handler': './dist/utils/handler.js',
-      './websocket': './dist/websocket/index.js',
-      './package.json': './package.json'
-    },
-    files: [
-      'dist'
-    ],
-    peerDependencies: {
-      'astro': '^5.0.0'
-    }
+function copyAndModifyUpstreamPackageJson(upstreamCloudflareDir: string, finalCloudflareDir: string): void {
+  // Read the upstream package.json (which already has our WebSocket export)
+  const upstreamPackageJsonPath = join(upstreamCloudflareDir, 'package.json')
+  const packageJson = JSON.parse(readFileSync(upstreamPackageJsonPath, 'utf-8'))
+  
+  // Only modify what we need for our renamed package
+  packageJson.name = 'zastro-websockets-cloudflare'
+  packageJson.description = 'Deploy your site to Cloudflare Workers/Pages with WebSocket support'
+  packageJson.repository = {
+    type: 'git',
+    url: 'https://github.com/zach-planet-nine/ZAstroWebsockets.git'
   }
+  
+  // Add websockets keyword
+  if (!packageJson.keywords.includes('websockets')) {
+    packageJson.keywords.push('websockets')
+  }
+  
+  // Convert workspace dependencies to actual versions
+  if (packageJson.dependencies && packageJson.dependencies['@astrojs/internal-helpers'] === 'workspace:*') {
+    packageJson.dependencies['@astrojs/internal-helpers'] = '^0.6.1'
+  }
+  
+  // Remove workspace-specific fields that don't apply to our standalone package
+  delete packageJson.bugs
+  delete packageJson.homepage
+  delete packageJson.scripts
+  delete packageJson.devDependencies
+  delete packageJson.publishConfig
   
   const packageJsonPath = join(finalCloudflareDir, 'package.json')
   writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
-  console.log('✅ Created final package.json for zastro-websockets-cloudflare')
+  console.log('✅ Created final package.json for zastro-websockets-cloudflare based on upstream')
 }
 
 function createCloudflareWebSocketFiles(websocketDir: string): void {

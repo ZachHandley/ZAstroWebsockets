@@ -1,6 +1,6 @@
 {
   "name": "zastro-websockets-node",
-  "description": "Deploy your site to a Node.js server",
+  "description": "Deploy your site to a Node.js server with WebSocket support",
   "version": "9.3.0",
   "type": "module",
   "types": "./dist/index.d.ts",
@@ -8,48 +8,23 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/withastro/astro.git",
-    "directory": "packages/integrations/node"
+    "url": "https://github.com/zach-planet-nine/ZAstroWebsockets.git"
   },
   "keywords": [
     "withastro",
-    "astro-adapter"
+    "astro-adapter",
+    "websockets"
   ],
-  "bugs": "https://github.com/withastro/astro/issues",
-  "homepage": "https://docs.astro.build/en/guides/integrations-guide/node/",
   "exports": {
     ".": "./dist/index.js",
     "./server.js": "./dist/server.js",
     "./preview.js": "./dist/preview.js",
     "./package.json": "./package.json",
-    "./websocket/stats": {
-      "types": "./dist/websocket/stats.d.ts",
-      "import": "./dist/websocket/stats.js"
-    },
-    "./stats": {
-      "types": "./dist/websocket/stats.d.ts",
-      "import": "./dist/websocket/stats.js"
-    },
-    "./websocket/connection-manager": {
-      "types": "./dist/websocket/connection-manager.d.ts",
-      "import": "./dist/websocket/connection-manager.js"
-    },
-    "./connection-manager": {
-      "types": "./dist/websocket/connection-manager.d.ts",
-      "import": "./dist/websocket/connection-manager.js"
-    },
-    "./middleware": {
-      "types": "./dist/middleware/index.d.ts",
-      "import": "./dist/middleware/index.js"
-    }
+    "./websocket": "./dist/websocket/index.js"
   },
   "files": [
     "dist"
   ],
-  "scripts": {
-    "dev": "tsc --watch",
-    "build": "tsc"
-  },
   "dependencies": {
     "@astrojs/internal-helpers": "^0.6.1",
     "send": "^1.2.0",
@@ -58,18 +33,5 @@
   },
   "peerDependencies": {
     "astro": "^5.3.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.6",
-    "@types/send": "^0.17.4",
-    "@types/server-destroy": "^1.0.4",
-    "cheerio": "1.0.0",
-    "devalue": "^5.1.1",
-    "express": "^4.21.2",
-    "node-mocks-http": "^1.17.2",
-    "@types/ws": "^8.5.12"
-  },
-  "publishConfig": {
-    "provenance": true
   }
 }

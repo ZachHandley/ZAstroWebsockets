@@ -10,70 +10,75 @@ import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: string): () => void {
-  console.log('🔧 Applying Node.js WebSocket patch using 5-step process...')
+  console.log('🔧 Applying Node.js WebSocket patch by modifying upstream directly...')
   
   const upstreamNodeDir = join(astroUpstreamDir, 'packages/integrations/node')
-  const localNodeDir = join(rootDir, 'packages/node')
+  const finalNodeDir = join(rootDir, 'packages/node')
   
   if (!existsSync(upstreamNodeDir)) {
     throw new Error(`Upstream node directory not found: ${upstreamNodeDir}`)
   }
   
   try {
-    // Step 1: Copy upstream files to packages/node/
-    console.log('📁 Step 1: Copying upstream files to packages/node/')
-    if (existsSync(localNodeDir)) {
-      rmSync(localNodeDir, { recursive: true, force: true })
+    // Step 1: Apply patch modifications directly to upstream
+    console.log('🔧 Step 1: Applying patch modifications to upstream Node adapter')
+    applyAllPatchModifications(upstreamNodeDir)
+    
+    // Step 2: Update package.json in upstream (minimal changes only)
+    console.log('📝 Step 2: Updating package.json in upstream adapter')
+    updateUpstreamPackageJson(upstreamNodeDir)
+    
+    // Step 2.1: Install dependencies in upstream workspace
+    console.log('📦 Step 2.1: Installing dependencies in upstream workspace')
+    execSync('pnpm install', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    
+    // Step 3: Build in upstream workspace
+    console.log('🏗️ Step 3: Building in upstream workspace')
+    execSync('pnpm run build --filter @astrojs/node', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    
+    // Step 4: Copy built dist folder to our final package
+    console.log('📦 Step 4: Copying built dist to final package location')
+    if (existsSync(finalNodeDir)) {
+      rmSync(finalNodeDir, { recursive: true })
     }
-    mkdirSync(localNodeDir, { recursive: true })
-    cpSync(upstreamNodeDir, localNodeDir, { recursive: true })
+    mkdirSync(finalNodeDir, { recursive: true })
     
-    // Step 2: Apply patch modifications to the local copy
-    console.log('🔧 Step 2: Applying patch modifications to local copy')
-    applyAllPatchModifications(localNodeDir)
-    
-    // Step 3: Update package.json in the local copy
-    console.log('📝 Step 3: Updating package.json in local copy')
-    updateLocalPackageJson(localNodeDir, rootDir)
-    
-    // Step 4: Install dependencies in the local copy
-    console.log('📦 Step 4: Installing dependencies in local copy')
-    execSync('pnpm install', { cwd: localNodeDir, stdio: 'inherit' })
-    
-    // Step 4.1: Link internal-helpers from astro-upstream manually
-    console.log('🔗 Linking @astrojs/internal-helpers from astro-upstream...')
-    const internalHelpersSource = join(rootDir, 'astro-upstream/packages/internal-helpers')
-    const internalHelpersTarget = join(localNodeDir, 'node_modules/@astrojs/internal-helpers')
-    if (existsSync(internalHelpersSource)) {
-      mkdirSync(join(localNodeDir, 'node_modules/@astrojs'), { recursive: true })
-      // Remove existing symlink/folder first
-      if (existsSync(internalHelpersTarget)) {
-        rmSync(internalHelpersTarget, { recursive: true, force: true })
-      }
-      cpSync(internalHelpersSource, internalHelpersTarget, { recursive: true })
-      console.log('✅ @astrojs/internal-helpers linked successfully')
+    const upstreamDistDir = join(upstreamNodeDir, 'dist')
+    const finalDistDir = join(finalNodeDir, 'dist')
+    if (existsSync(upstreamDistDir)) {
+      cpSync(upstreamDistDir, finalDistDir, { recursive: true })
+      console.log('✅ Built dist folder copied successfully')
     }
     
-    // Step 5: Build in the local copy
-    console.log('🏗️ Step 5: Building in local copy')
-    execSync('pnpm run build', { cwd: localNodeDir, stdio: 'inherit' })
+    // Copy and modify upstream package.json for our package
+    copyAndModifyUpstreamPackageJson(upstreamNodeDir, finalNodeDir)
     
     console.log('✅ Node.js WebSocket patch applied successfully')
     
-    // Return empty restore function since we're not modifying upstream
-    return () => {}
+    // Return restore function to reset upstream changes
+    return () => {
+      console.log('🔄 Restoring upstream Node adapter to original state...')
+      execSync('git checkout HEAD -- packages/integrations/node/', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    }
     
   } catch (error) {
+    // Restore upstream on error
+    console.log('🔄 Restoring upstream due to error...')
+    try {
+      execSync('git checkout HEAD -- packages/integrations/node/', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    } catch (restoreError) {
+      console.warn('⚠️ Failed to restore upstream:', restoreError.message)
+    }
     console.error('❌ Error applying Node.js WebSocket patch:', error.message)
     throw error
   }
 }
 
 /**
- * Apply all patch modifications to the local copy
+ * Apply all patch modifications directly to upstream
  */
-function applyAllPatchModifications(localNodeDir: string) {
-  const srcDir = join(localNodeDir, 'src')
+function applyAllPatchModifications(upstreamNodeDir: string) {
+  const srcDir = join(upstreamNodeDir, 'src')
   const websocketDir = join(srcDir, 'websocket')
   const middlewareDir = join(srcDir, 'middleware')
   
@@ -221,17 +226,17 @@ function applyIndexModifications(srcDir: string) {
 }
 
 /**
- * Update package.json in the local copy
+ * Update package.json in upstream (minimal changes only)
  */
-function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
-  const packageJsonPath = join(localNodeDir, 'package.json')
+function updateUpstreamPackageJson(upstreamNodeDir: string): void {
+  const packageJsonPath = join(upstreamNodeDir, 'package.json')
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
-  // Start with upstream package.json as base to ensure identical dependency versions
-  const upstreamPackageJsonPath = join(rootDir, 'astro-upstream/packages/integrations/node/package.json')
-  const packageJson = JSON.parse(readFileSync(upstreamPackageJsonPath, 'utf-8'))
-  
-  // Only modify what we specifically need for our WebSocket-enabled version
-  packageJson.name = 'zastro-websockets-node'
+  // Only add the websocket export - keep everything else unchanged
+  if (!packageJson.exports) {
+    packageJson.exports = {}
+  }
+  packageJson.exports['./websocket'] = './dist/websocket/index.js'
   
   // Add WebSocket dependencies
   if (!packageJson.dependencies) {
@@ -245,81 +250,43 @@ function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
   }
   packageJson.devDependencies['@types/ws'] = '^8.5.12'
   
-  // Convert workspace dependencies to actual versions for standalone build
-  if (packageJson.dependencies) {
-    if (packageJson.dependencies['@astrojs/internal-helpers'] === 'workspace:*') {
-      const internalHelpersVersion = JSON.parse(
-        readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
-      ).version
-      packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
-    }
-  }
-  
-  // Remove workspace-specific devDependencies
-  if (packageJson.devDependencies) {
-    if (packageJson.devDependencies['astro'] === 'workspace:*') {
-      delete packageJson.devDependencies['astro']
-    }
-    if (packageJson.devDependencies['astro-scripts'] === 'workspace:*') {
-      delete packageJson.devDependencies['astro-scripts']
-    }
-  }
-  
-  // Update build scripts to use tsc instead of astro-scripts
-  if (packageJson.scripts) {
-    packageJson.scripts.build = 'tsc'
-    packageJson.scripts.dev = 'tsc --watch'
-    delete packageJson.scripts['build:ci']
-    delete packageJson.scripts.test
-  }
-  
-  // Add websocket exports to match the package structure
-  packageJson.exports['./websocket/stats'] = {
-    types: './dist/websocket/stats.d.ts',
-    import: './dist/websocket/stats.js'
-  }
-  packageJson.exports['./stats'] = {
-    types: './dist/websocket/stats.d.ts',
-    import: './dist/websocket/stats.js'
-  }
-  packageJson.exports['./websocket/connection-manager'] = {
-    types: './dist/websocket/connection-manager.d.ts',
-    import: './dist/websocket/connection-manager.js'
-  }
-  packageJson.exports['./connection-manager'] = {
-    types: './dist/websocket/connection-manager.d.ts',
-    import: './dist/websocket/connection-manager.js'
-  }
-  packageJson.exports['./middleware'] = {
-    types: './dist/middleware/index.d.ts',
-    import: './dist/middleware/index.js'
-  }
-  
   writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
+  console.log('✅ Added websocket export and dependencies to upstream package.json')
+}
+
+function copyAndModifyUpstreamPackageJson(upstreamNodeDir: string, finalNodeDir: string): void {
+  // Read the upstream package.json (which already has our WebSocket export)
+  const upstreamPackageJsonPath = join(upstreamNodeDir, 'package.json')
+  const packageJson = JSON.parse(readFileSync(upstreamPackageJsonPath, 'utf-8'))
   
-  // Create a proper tsconfig.json for standalone build
-  const tsconfigPath = join(localNodeDir, 'tsconfig.json')
-  const tsconfig = {
-    compilerOptions: {
-      target: 'ES2020',
-      module: 'ESNext',
-      moduleResolution: 'bundler',
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      declaration: true,
-      outDir: './dist',
-      rootDir: './src',
-      allowSyntheticDefaultImports: true,
-      resolveJsonModule: true,
-      types: ['node']
-    },
-    include: ['src/**/*'],
-    exclude: ['node_modules', 'dist', 'test']
+  // Only modify what we need for our renamed package
+  packageJson.name = 'zastro-websockets-node'
+  packageJson.description = 'Deploy your site to a Node.js server with WebSocket support'
+  packageJson.repository = {
+    type: 'git',
+    url: 'https://github.com/zach-planet-nine/ZAstroWebsockets.git'
   }
   
-  writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + '\n')
+  // Add websockets keyword
+  if (!packageJson.keywords.includes('websockets')) {
+    packageJson.keywords.push('websockets')
+  }
+  
+  // Convert workspace dependencies to actual versions
+  if (packageJson.dependencies['@astrojs/internal-helpers'] === 'workspace:*') {
+    packageJson.dependencies['@astrojs/internal-helpers'] = '^0.6.1'
+  }
+  
+  // Remove workspace-specific fields that don't apply to our standalone package
+  delete packageJson.bugs
+  delete packageJson.homepage
+  delete packageJson.scripts
+  delete packageJson.devDependencies
+  delete packageJson.publishConfig
+  
+  const packageJsonPath = join(finalNodeDir, 'package.json')
+  writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
+  console.log('✅ Created final package.json for zastro-websockets-node based on upstream')
 }
 
 /**

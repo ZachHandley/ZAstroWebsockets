@@ -13,8 +13,7 @@
   "keywords": [
     "withastro",
     "astro-adapter",
-    "websockets",
-    "cloudflare"
+    "websockets"
   ],
   "exports": {
     ".": "./dist/index.js",
@@ -23,12 +22,20 @@
     "./image-service": "./dist/entrypoints/image-service.js",
     "./image-endpoint": "./dist/entrypoints/image-endpoint.js",
     "./handler": "./dist/utils/handler.js",
-    "./websocket": "./dist/websocket/index.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./websocket": "./dist/websocket/index.js"
   },
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@astrojs/internal-helpers": "^0.6.1",
+    "@astrojs/underscore-redirects": "workspace:*",
+    "@cloudflare/workers-types": "^4.20250507.0",
+    "tinyglobby": "^0.2.13",
+    "vite": "^6.3.5",
+    "wrangler": "^4.14.1"
+  },
   "peerDependencies": {
     "astro": "^5.0.0"
   }
