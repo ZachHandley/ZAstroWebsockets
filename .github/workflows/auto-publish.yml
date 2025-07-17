@@ -132,7 +132,13 @@ jobs:
           fi
 
       - name: Publish packages to npm
-        run: pnpm run publish:packages
+        run: |
+          # Configure npm authentication
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
+          
+          # Publish packages
+          pnpm run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
