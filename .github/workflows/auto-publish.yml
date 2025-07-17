@@ -47,17 +47,10 @@ jobs:
           NEW_VERSION="${ASTRO_VERSION}-${OUR_COMMIT}"
           echo "Proposed new version: $NEW_VERSION"
           
-          # Check if tags for this version already exist for both packages
-          NODE_TAG_EXISTS=$(git tag --list | grep -q "^node-v${NEW_VERSION}$" && echo "true" || echo "false")
-          CLOUDFLARE_TAG_EXISTS=$(git tag --list | grep -q "^cloudflare-v${NEW_VERSION}$" && echo "true" || echo "false")
-          
-          if [[ "$NODE_TAG_EXISTS" == "true" && "$CLOUDFLARE_TAG_EXISTS" == "true" ]]; then
-            echo "Both package versions already exist, skipping publish"
-            echo "should-publish=false" >> $GITHUB_OUTPUT
-          else
-            echo "New version $NEW_VERSION, will publish"
-            echo "should-publish=true" >> $GITHUB_OUTPUT
-          fi
+          # Check if we need to publish by looking at built packages
+          # We'll check after building to see if individual package versions exist
+          echo "Will check individual package versions after build"
+          echo "should-publish=true" >> $GITHUB_OUTPUT
           
           echo "astro-version=$ASTRO_VERSION" >> $GITHUB_OUTPUT
           echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -94,8 +87,8 @@ jobs:
           echo "Updating to latest Astro tag: $LATEST_ASTRO_TAG"
           git checkout "$LATEST_ASTRO_TAG"
           cd ..
-          # Install dependencies but exclude our generated packages
-          pnpm install --ignore-scripts --filter='!zastro-websockets-node' --filter='!zastro-websockets-cloudflare'
+          # Install dependencies for root package only (packages are not workspaces)
+          pnpm install --ignore-scripts
 
       - name: Build and test adapters
         run: |
@@ -111,28 +104,39 @@ jobs:
         run: |
           pnpm run build
 
-      - name: Update package versions and get individual versions
+      - name: Get individual package versions (use actual package versions, not synced)
         id: versions
         run: |
-          # Use sync-version script to update all packages consistently
-          npm run sync-version
-          
-          # Get individual package versions for tagging
+          # Get the actual package versions from built packages
           NODE_VERSION=$(node -p "require('./packages/node/package.json').version")
           CLOUDFLARE_VERSION=$(node -p "require('./packages/cloudflare/package.json').version")
           
           echo "Node package version: $NODE_VERSION"
           echo "Cloudflare package version: $CLOUDFLARE_VERSION"
           
+          # Check if tags for these versions already exist
+          NODE_TAG_EXISTS=$(git tag --list | grep -q "^node-v${NODE_VERSION}$" && echo "true" || echo "false")
+          CLOUDFLARE_TAG_EXISTS=$(git tag --list | grep -q "^cloudflare-v${CLOUDFLARE_VERSION}$" && echo "true" || echo "false")
+          
+          if [[ "$NODE_TAG_EXISTS" == "true" && "$CLOUDFLARE_TAG_EXISTS" == "true" ]]; then
+            echo "Both package versions already exist, skipping publish"
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+          else
+            echo "New package versions found, will publish"
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+          fi
+          
           echo "node-version=$NODE_VERSION" >> $GITHUB_OUTPUT
           echo "cloudflare-version=$CLOUDFLARE_VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish packages to npm
+        if: steps.versions.outputs.should-publish == 'true'
         run: pnpm run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
 
       - name: Create release branches and tags for each package
+        if: steps.versions.outputs.should-publish == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -143,7 +147,7 @@ jobs:
           # Create release branch for Node.js package
           NODE_BRANCH="releases/node-v$NODE_VERSION"
           git checkout -b "$NODE_BRANCH"
-          git add packages/node/
+          git add -f packages/node/
           git commit -m "release: zastro-websockets-node v$NODE_VERSION for Astro ${{ needs.check-submodule.outputs.astro-version }}"
           git push origin "$NODE_BRANCH"
           git tag "node-v$NODE_VERSION"
@@ -153,13 +157,14 @@ jobs:
           git checkout main
           CLOUDFLARE_BRANCH="releases/cloudflare-v$CLOUDFLARE_VERSION"
           git checkout -b "$CLOUDFLARE_BRANCH"
-          git add packages/cloudflare/
+          git add -f packages/cloudflare/
           git commit -m "release: zastro-websockets-cloudflare v$CLOUDFLARE_VERSION for Astro ${{ needs.check-submodule.outputs.astro-version }}"
           git push origin "$CLOUDFLARE_BRANCH"
           git tag "cloudflare-v$CLOUDFLARE_VERSION"
           git push origin "cloudflare-v$CLOUDFLARE_VERSION"
 
       - name: Create GitHub releases for each package
+        if: steps.versions.outputs.should-publish == 'true'
         run: |
           NODE_VERSION="${{ steps.versions.outputs.node-version }}"
           CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"

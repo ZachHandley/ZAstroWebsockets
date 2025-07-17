@@ -24,9 +24,6 @@
     "url": "https://github.com/zachhandley/zastro-websockets/issues"
   },
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
   "devDependencies": {
     "@types/node": "^24.0.14",
     "tsup": "^8.0.0",
@@ -44,7 +41,7 @@
     "test:cloudflare": "cd ./tests/projects/cloudflare && pnpm install && pnpm run build && cd ../../..",
     "test": "pnpm run test:node && pnpm run test:cloudflare",
     "sync-version": "node scripts/sync-version.cjs",
-    "publish:packages": "npm publish --workspace packages/node --access public && npm publish --workspace packages/cloudflare --access public"
+    "publish:packages": "(cd packages/node && npm publish --access public) && (cd packages/cloudflare && npm publish --access public)"
   },
   "engines": {
     "node": ">=18.0.0"
