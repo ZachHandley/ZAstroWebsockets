@@ -111,18 +111,24 @@ jobs:
           NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
           echo "Updating package versions to $NEW_VERSION"
           
-          # Update node package version
+          # Update node package version (directly edit JSON, no npm install)
           if [ -f packages/node/package.json ]; then
-            cd packages/node
-            npm version "$NEW_VERSION" --no-git-tag-version
-            cd ../..
+            node -e "
+              const pkg = JSON.parse(require('fs').readFileSync('packages/node/package.json', 'utf8'));
+              pkg.version = '$NEW_VERSION';
+              require('fs').writeFileSync('packages/node/package.json', JSON.stringify(pkg, null, 2) + '\n');
+              console.log('Updated packages/node/package.json to version $NEW_VERSION');
+            "
           fi
           
-          # Update cloudflare package version  
+          # Update cloudflare package version (directly edit JSON, no npm install)
           if [ -f packages/cloudflare/package.json ]; then
-            cd packages/cloudflare
-            npm version "$NEW_VERSION" --no-git-tag-version
-            cd ../..
+            node -e "
+              const pkg = JSON.parse(require('fs').readFileSync('packages/cloudflare/package.json', 'utf8'));
+              pkg.version = '$NEW_VERSION';
+              require('fs').writeFileSync('packages/cloudflare/package.json', JSON.stringify(pkg, null, 2) + '\n');
+              console.log('Updated packages/cloudflare/package.json to version $NEW_VERSION');
+            "
           fi
 
       - name: Publish packages to npm
