@@ -29,32 +29,31 @@ jobs:
       - name: Check submodule changes and version
         id: check
         run: |
-          # Get current submodule commit
-          CURRENT_COMMIT=$(git submodule status astro-upstream | awk '{print $1}' | sed 's/^+//')
-          echo "Current submodule commit: $CURRENT_COMMIT"
+          # Get our repo's latest commit hash
+          OUR_COMMIT=$(git rev-parse HEAD | cut -c1-7)
+          echo "Our repo commit: $OUR_COMMIT"
           
           # Get Astro version from submodule package.json
           cd astro-upstream
+          git fetch --tags
+          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | sort -V | tail -1)
+          echo "Latest Astro tag: $LATEST_ASTRO_TAG"
+          git checkout "$LATEST_ASTRO_TAG"
           ASTRO_VERSION=$(node -p "require('./package.json').version")
           echo "Astro version: $ASTRO_VERSION"
           cd ..
           
-          # Get current package version
-          CURRENT_PKG_VERSION=$(node -p "require('./package.json').version")
-          echo "Current package version: $CURRENT_PKG_VERSION"
-          
-          # Generate new version based on Astro version + submodule commit
-          SHORT_COMMIT=${CURRENT_COMMIT:0:7}
-          NEW_VERSION="${ASTRO_VERSION}-${SHORT_COMMIT}"
+          # Generate new version: Astro version + our commit hash
+          NEW_VERSION="${ASTRO_VERSION}-${OUR_COMMIT}"
           echo "Proposed new version: $NEW_VERSION"
           
-          # Check if we need to publish (version changed)
-          if [ "$CURRENT_PKG_VERSION" != "$NEW_VERSION" ]; then
-            echo "Version changed from $CURRENT_PKG_VERSION to $NEW_VERSION"
-            echo "should-publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version unchanged: $CURRENT_PKG_VERSION"
+          # Check if this version tag already exists
+          if git tag --list | grep -q "^v${NEW_VERSION}$"; then
+            echo "Version v$NEW_VERSION already exists, skipping publish"
             echo "should-publish=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version v$NEW_VERSION, will publish"
+            echo "should-publish=true" >> $GITHUB_OUTPUT
           fi
           
           echo "astro-version=$ASTRO_VERSION" >> $GITHUB_OUTPUT
@@ -101,60 +100,34 @@ jobs:
           echo "Testing both adapters..."
           pnpm run test
 
-      - name: Update version in package.json
-        run: |
-          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
-          npm version "$NEW_VERSION" --no-git-tag-version
-          echo "Updated package.json to version $NEW_VERSION"
-
-      - name: Update changelog
-        run: |
-          ASTRO_VERSION="${{ needs.check-submodule.outputs.astro-version }}"
-          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
-          TODAY=$(date +%Y-%m-%d)
-          
-          # Create changelog entry
-          cat > temp_changelog.md << EOF
-          # Changelog
-          
-          ## [${NEW_VERSION}] - ${TODAY}
-          
-          ### Updated
-          - Updated to Astro ${ASTRO_VERSION}
-          - Synced with upstream Astro repository
-          
-          EOF
-          
-          # Append existing changelog if it exists
-          if [ -f CHANGELOG.md ]; then
-            tail -n +2 CHANGELOG.md >> temp_changelog.md
-          fi
-          
-          mv temp_changelog.md CHANGELOG.md
+# Version handling is done in the packages themselves, not root package.json
 
       - name: Final build
         run: |
           pnpm run build
 
-      - name: Commit version updates
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add package.json CHANGELOG.md
-          git commit -m "chore: bump version to ${{ needs.check-submodule.outputs.new-version }}" || exit 0
-
-      - name: Create Git tag
-        run: |
-          git tag "v${{ needs.check-submodule.outputs.new-version }}"
-          git push origin "v${{ needs.check-submodule.outputs.new-version }}"
-
-      - name: Push changes
-        run: git push origin main
-
       - name: Publish packages to npm
         run: pnpm run publish:packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Commit built packages (after successful publish)
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Only commit the built packages folder, not version bumps
+          git add packages/
+          if git diff --staged --quiet; then
+            echo "No changes to built packages, skipping commit"
+          else
+            git commit -m "build: update packages for Astro ${{ needs.check-submodule.outputs.astro-version }} (${{ needs.check-submodule.outputs.new-version }})"
+            git push origin main
+          fi
+          
+          # Create git tag for the release (but don't commit version changes to package.json)
+          git tag "v${{ needs.check-submodule.outputs.new-version }}"
+          git push origin "v${{ needs.check-submodule.outputs.new-version }}"
 
       - name: Create GitHub release
         uses: actions/create-release@v1.1.4
