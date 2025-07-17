@@ -106,6 +106,25 @@ jobs:
         run: |
           pnpm run build
 
+      - name: Update package versions
+        run: |
+          NEW_VERSION="${{ needs.check-submodule.outputs.new-version }}"
+          echo "Updating package versions to $NEW_VERSION"
+          
+          # Update node package version
+          if [ -f packages/node/package.json ]; then
+            cd packages/node
+            npm version "$NEW_VERSION" --no-git-tag-version
+            cd ../..
+          fi
+          
+          # Update cloudflare package version  
+          if [ -f packages/cloudflare/package.json ]; then
+            cd packages/cloudflare
+            npm version "$NEW_VERSION" --no-git-tag-version
+            cd ../..
+          fi
+
       - name: Publish packages to npm
         run: pnpm run publish:packages
         env:
