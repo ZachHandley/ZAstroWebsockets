@@ -49,6 +49,17 @@ export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir:
     // Copy and modify upstream package.json for our package
     copyAndModifyUpstreamPackageJson(upstreamCloudflareDir, finalCloudflareDir)
     
+    // Copy README.md to final package
+    console.log('📄 Step 5: Copying README.md to final package')
+    const readmePath = join(process.cwd(), 'README.md')
+    const finalReadmePath = join(finalCloudflareDir, 'README.md')
+    if (existsSync(readmePath)) {
+      copyFileSync(readmePath, finalReadmePath)
+      console.log('✅ Copied README.md to final package')
+    } else {
+      console.warn('⚠️ README.md not found in root directory')
+    }
+    
     console.log('✅ Cloudflare WebSocket patch applied successfully')
     
     // Return restore function to reset upstream changes

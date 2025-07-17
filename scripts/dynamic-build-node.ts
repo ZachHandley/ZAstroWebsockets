@@ -53,6 +53,17 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
     // Copy and modify upstream package.json for our package
     copyAndModifyUpstreamPackageJson(upstreamNodeDir, finalNodeDir)
     
+    // Copy README.md to final package
+    console.log('📄 Step 5: Copying README.md to final package')
+    const readmePath = join(process.cwd(), 'README.md')
+    const finalReadmePath = join(finalNodeDir, 'README.md')
+    if (existsSync(readmePath)) {
+      copyFileSync(readmePath, finalReadmePath)
+      console.log('✅ Copied README.md to final package')
+    } else {
+      console.warn('⚠️ README.md not found in root directory')
+    }
+    
     console.log('✅ Node.js WebSocket patch applied successfully')
     
     // Return restore function to reset upstream changes
