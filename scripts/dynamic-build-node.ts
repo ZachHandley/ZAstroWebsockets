@@ -2,7 +2,7 @@
 
 /**
  * Dynamic Node.js WebSocket patch generator
- * Follows the correct approach: copy upstream -> modify local -> build local
+ * Follows the 5-step process: copy upstream → modify local → update package.json → install deps → build
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: string): () => void {
-  console.log('🔧 Building Node.js WebSocket adapter from upstream...')
+  console.log('🔧 Applying Node.js WebSocket patch using 5-step process...')
   
   const upstreamNodeDir = join(astroUpstreamDir, 'packages/integrations/node')
   const localNodeDir = join(rootDir, 'packages/node')
@@ -21,7 +21,7 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
   
   try {
     // Step 1: Copy upstream files to packages/node/
-    console.log('📁 Copying upstream files to packages/node/...')
+    console.log('📁 Step 1: Copying upstream files to packages/node/')
     if (existsSync(localNodeDir)) {
       rmSync(localNodeDir, { recursive: true, force: true })
     }
@@ -29,15 +29,15 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
     cpSync(upstreamNodeDir, localNodeDir, { recursive: true })
     
     // Step 2: Apply patch modifications to the local copy
-    console.log('🔨 Applying patch modifications to local copy...')
+    console.log('🔧 Step 2: Applying patch modifications to local copy')
     applyAllPatchModifications(localNodeDir)
     
     // Step 3: Update package.json in the local copy
-    console.log('📝 Updating package.json in local copy...')
+    console.log('📝 Step 3: Updating package.json in local copy')
     updateLocalPackageJson(localNodeDir, rootDir)
     
     // Step 4: Install dependencies in the local copy
-    console.log('📦 Installing dependencies in local copy...')
+    console.log('📦 Step 4: Installing dependencies in local copy')
     execSync('pnpm install', { cwd: localNodeDir, stdio: 'inherit' })
     
     // Step 4.1: Link internal-helpers from astro-upstream manually
@@ -55,18 +55,16 @@ export function applyNodeWebSocketPatch(astroUpstreamDir: string, rootDir: strin
     }
     
     // Step 5: Build in the local copy
-    console.log('🔨 Building adapter in local copy...')
+    console.log('🏗️ Step 5: Building in local copy')
     execSync('pnpm run build', { cwd: localNodeDir, stdio: 'inherit' })
     
-    console.log('✅ Node.js WebSocket adapter built successfully')
+    console.log('✅ Node.js WebSocket patch applied successfully')
     
-    // Return cleanup function (no-op since we don't modify upstream)
-    return () => {
-      console.log('✅ No cleanup needed (upstream files were not modified)')
-    }
+    // Return empty restore function since we're not modifying upstream
+    return () => {}
     
   } catch (error) {
-    console.error('❌ Error building Node.js WebSocket adapter:', error.message)
+    console.error('❌ Error applying Node.js WebSocket patch:', error.message)
     throw error
   }
 }
@@ -89,53 +87,12 @@ function applyAllPatchModifications(localNodeDir: string) {
   applyTypesModifications(srcDir)
   applyIndexModifications(srcDir)
   
-  // Import paths should work with package exports - no fixes needed
+  // Internal helpers imports should work with package exports - no fixes needed
   
   // Create new WebSocket files
   createWebSocketFiles(websocketDir, middlewareDir)
 }
 
-/**
- * Fix @astrojs/internal-helpers import paths in all TypeScript files
- */
-function fixInternalHelpersImports(localNodeDir: string) {
-  const findTsFiles = (dir: string): string[] => {
-    const files: string[] = []
-    const entries = readdirSync(dir)
-    
-    for (const entry of entries) {
-      const fullPath = join(dir, entry)
-      const stat = statSync(fullPath)
-      
-      if (stat.isDirectory()) {
-        files.push(...findTsFiles(fullPath))
-      } else if (entry.endsWith('.ts')) {
-        files.push(fullPath)
-      }
-    }
-    
-    return files
-  }
-  
-  const srcDir = join(localNodeDir, 'src')
-  if (!existsSync(srcDir)) return
-  
-  const tsFiles = findTsFiles(srcDir)
-  
-  tsFiles.forEach((fullPath: string) => {
-    let content = readFileSync(fullPath, 'utf-8')
-    let modified = false
-    
-    // No need to fix imports - they should work with the package exports
-    // The issue is that we need to keep @astrojs/internal-helpers as a dependency
-    
-    if (modified) {
-      writeFileSync(fullPath, content)
-      const relativePath = fullPath.replace(localNodeDir + '/', '')
-      console.log(`  ✅ Fixed internal-helpers imports in ${relativePath}`)
-    }
-  })
-}
 
 /**
  * Apply serve-app.ts modifications
@@ -268,38 +225,47 @@ function applyIndexModifications(srcDir: string) {
  */
 function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
   const packageJsonPath = join(localNodeDir, 'package.json')
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
-  // Update package name
+  // Start with upstream package.json as base to ensure identical dependency versions
+  const upstreamPackageJsonPath = join(rootDir, 'astro-upstream/packages/integrations/node/package.json')
+  const packageJson = JSON.parse(readFileSync(upstreamPackageJsonPath, 'utf-8'))
+  
+  // Only modify what we specifically need for our WebSocket-enabled version
   packageJson.name = 'zastro-websockets-node'
   
-  // Add ws dependency
+  // Add WebSocket dependencies
   if (!packageJson.dependencies) {
     packageJson.dependencies = {}
   }
   packageJson.dependencies.ws = '^8.18.0'
   
-  // Convert workspace dependency to regular dependency version using upstream version
-  if (packageJson.dependencies && packageJson.dependencies['@astrojs/internal-helpers']) {
-    const internalHelpersVersion = JSON.parse(
-      readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
-    ).version
-    packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
-  }
-  
-  // Add ws types
+  // Add WebSocket type dependencies
   if (!packageJson.devDependencies) {
     packageJson.devDependencies = {}
   }
   packageJson.devDependencies['@types/ws'] = '^8.5.12'
   
-  // Remove workspace devDependencies
-  if (packageJson.devDependencies) {
-    delete packageJson.devDependencies['astro']
-    delete packageJson.devDependencies['astro-scripts']
+  // Convert workspace dependencies to actual versions for standalone build
+  if (packageJson.dependencies) {
+    if (packageJson.dependencies['@astrojs/internal-helpers'] === 'workspace:*') {
+      const internalHelpersVersion = JSON.parse(
+        readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
+      ).version
+      packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
+    }
   }
   
-  // Update build scripts to not use astro-scripts
+  // Remove workspace-specific devDependencies
+  if (packageJson.devDependencies) {
+    if (packageJson.devDependencies['astro'] === 'workspace:*') {
+      delete packageJson.devDependencies['astro']
+    }
+    if (packageJson.devDependencies['astro-scripts'] === 'workspace:*') {
+      delete packageJson.devDependencies['astro-scripts']
+    }
+  }
+  
+  // Update build scripts to use tsc instead of astro-scripts
   if (packageJson.scripts) {
     packageJson.scripts.build = 'tsc'
     packageJson.scripts.dev = 'tsc --watch'
@@ -307,12 +273,7 @@ function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
     delete packageJson.scripts.test
   }
   
-  // Add websocket exports
-  if (!packageJson.exports) {
-    packageJson.exports = {}
-  }
-  
-  // Add stats export
+  // Add websocket exports to match the package structure
   packageJson.exports['./websocket/stats'] = {
     types: './dist/websocket/stats.d.ts',
     import: './dist/websocket/stats.js'
@@ -321,8 +282,6 @@ function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
     types: './dist/websocket/stats.d.ts',
     import: './dist/websocket/stats.js'
   }
-  
-  // Add connection manager export
   packageJson.exports['./websocket/connection-manager'] = {
     types: './dist/websocket/connection-manager.d.ts',
     import: './dist/websocket/connection-manager.js'
@@ -331,8 +290,6 @@ function updateLocalPackageJson(localNodeDir: string, rootDir: string) {
     types: './dist/websocket/connection-manager.d.ts',
     import: './dist/websocket/connection-manager.js'
   }
-  
-  // Add middleware export
   packageJson.exports['./middleware'] = {
     types: './dist/middleware/index.d.ts',
     import: './dist/middleware/index.js'
@@ -550,7 +507,8 @@ export class WebSocket extends EventTarget implements WebSocketInterface {
     set binaryType(value: "arraybuffer" | "blob") {
         const ws = wsMap.get(this)
         if (ws) {
-            (ws as any).binaryType = value
+            // Use Object.assign instead of type assertion for better type safety
+            Object.assign(ws, { binaryType: value })
         } else {
             this.addEventListener("open", () => this.binaryType = value, { once: true })
         }
@@ -588,8 +546,9 @@ function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
 }
 
 function init(standard: WebSocket, ws: ws.WebSocket) {
-    // set the binary type to \`"blob"\` to align with the browser default
-    (ws as any).binaryType = "blob"
+    // Set the binary type to "blob" to align with the browser default
+    // Use Object.assign instead of type assertion for better type safety
+    Object.assign(ws, { binaryType: "blob" })
 
     if (ws.readyState === ws.OPEN) {
         const event = new Event("open")

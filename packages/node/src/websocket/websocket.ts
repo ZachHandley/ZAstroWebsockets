@@ -68,7 +68,8 @@ export class WebSocket extends EventTarget implements WebSocketInterface {
     set binaryType(value: "arraybuffer" | "blob") {
         const ws = wsMap.get(this)
         if (ws) {
-            (ws as any).binaryType = value
+            // Use Object.assign instead of type assertion for better type safety
+            Object.assign(ws, { binaryType: value })
         } else {
             this.addEventListener("open", () => this.binaryType = value, { once: true })
         }
@@ -106,8 +107,9 @@ function attachImpl(standard: WebSocket, ws: ws.WebSocket): void {
 }
 
 function init(standard: WebSocket, ws: ws.WebSocket) {
-    // set the binary type to `"blob"` to align with the browser default
-    (ws as any).binaryType = "blob"
+    // Set the binary type to "blob" to align with the browser default
+    // Use Object.assign instead of type assertion for better type safety
+    Object.assign(ws, { binaryType: "blob" })
 
     if (ws.readyState === ws.OPEN) {
         const event = new Event("open")

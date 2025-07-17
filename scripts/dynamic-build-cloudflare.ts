@@ -10,70 +10,57 @@ import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 export function applyCloudflareWebSocketPatch(astroUpstreamDir: string, rootDir: string): () => void {
-  console.log('🔧 Applying Cloudflare WebSocket patch using 5-step process...')
+  console.log('🔧 Applying Cloudflare WebSocket patch by modifying upstream directly...')
   
   const upstreamCloudflareDir = join(astroUpstreamDir, 'packages/integrations/cloudflare')
-  const localCloudflareDir = join(rootDir, 'packages/cloudflare')
+  const finalCloudflareDir = join(rootDir, 'packages/cloudflare')
   
   try {
-    // Step 1: Copy upstream files to packages/cloudflare/
-    console.log('📁 Step 1: Copying upstream files to packages/cloudflare/')
-    if (existsSync(localCloudflareDir)) {
-      rmSync(localCloudflareDir, { recursive: true })
+    // Step 1: Apply patch modifications directly to upstream
+    console.log('🔧 Step 1: Applying patch modifications to upstream Cloudflare adapter')
+    applyAllPatchModifications(upstreamCloudflareDir, rootDir)
+    
+    // Step 2: Update package.json in upstream (minimal changes only)
+    console.log('📝 Step 2: Updating package.json in upstream adapter')
+    updateUpstreamPackageJson(upstreamCloudflareDir)
+    
+    // Step 3: Build in upstream workspace
+    console.log('🏗️ Step 3: Building in upstream workspace')
+    execSync('pnpm run build --filter @astrojs/cloudflare', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    
+    // Step 4: Copy built dist folder to our final package
+    console.log('📦 Step 4: Copying built dist to final package location')
+    if (existsSync(finalCloudflareDir)) {
+      rmSync(finalCloudflareDir, { recursive: true })
     }
-    cpSync(upstreamCloudflareDir, localCloudflareDir, { recursive: true })
+    mkdirSync(finalCloudflareDir, { recursive: true })
     
-    // Step 2: Apply patch modifications to the local copy
-    console.log('🔧 Step 2: Applying patch modifications to local copy')
-    applyAllPatchModifications(localCloudflareDir, rootDir)
-    
-    // Import paths should work with package exports - no fixes needed
-    
-    // Step 3: Update package.json in the local copy
-    console.log('📝 Step 3: Updating package.json in local copy')
-    updateLocalPackageJson(localCloudflareDir, rootDir)
-    
-    // Step 4: Install dependencies in the local copy
-    console.log('📦 Step 4: Installing dependencies in local copy')
-    execSync('pnpm install', { cwd: localCloudflareDir, stdio: 'inherit' })
-    
-    // Step 4.1: Link internal-helpers from astro-upstream manually
-    console.log('🔗 Linking @astrojs/internal-helpers from astro-upstream...')
-    const internalHelpersSource = join(rootDir, 'astro-upstream/packages/internal-helpers')
-    const internalHelpersTarget = join(localCloudflareDir, 'node_modules/@astrojs/internal-helpers')
-    if (existsSync(internalHelpersSource)) {
-      mkdirSync(join(localCloudflareDir, 'node_modules/@astrojs'), { recursive: true })
-      // Remove existing symlink/folder first
-      if (existsSync(internalHelpersTarget)) {
-        rmSync(internalHelpersTarget, { recursive: true, force: true })
-      }
-      cpSync(internalHelpersSource, internalHelpersTarget, { recursive: true })
-      console.log('✅ @astrojs/internal-helpers linked successfully')
+    const upstreamDistDir = join(upstreamCloudflareDir, 'dist')
+    const finalDistDir = join(finalCloudflareDir, 'dist')
+    if (existsSync(upstreamDistDir)) {
+      cpSync(upstreamDistDir, finalDistDir, { recursive: true })
+      console.log('✅ Built dist folder copied successfully')
     }
     
-    // Step 4.2: Link underscore-redirects from astro-upstream manually
-    console.log('🔗 Linking @astrojs/underscore-redirects from astro-upstream...')
-    const underscoreRedirectsSource = join(rootDir, 'astro-upstream/packages/underscore-redirects')
-    const underscoreRedirectsTarget = join(localCloudflareDir, 'node_modules/@astrojs/underscore-redirects')
-    if (existsSync(underscoreRedirectsSource)) {
-      // Remove existing symlink/folder first
-      if (existsSync(underscoreRedirectsTarget)) {
-        rmSync(underscoreRedirectsTarget, { recursive: true, force: true })
-      }
-      cpSync(underscoreRedirectsSource, underscoreRedirectsTarget, { recursive: true })
-      console.log('✅ @astrojs/underscore-redirects linked successfully')
-    }
-    
-    // Step 5: Build in the local copy
-    console.log('🏗️ Step 5: Building in local copy')
-    execSync('pnpm run build', { cwd: localCloudflareDir, stdio: 'inherit' })
+    // Create final package.json for our package
+    createFinalPackageJson(finalCloudflareDir)
     
     console.log('✅ Cloudflare WebSocket patch applied successfully')
     
-    // Return empty restore function since we're not modifying upstream
-    return () => {}
+    // Return restore function to reset upstream changes
+    return () => {
+      console.log('🔄 Restoring upstream Cloudflare adapter to original state...')
+      execSync('git checkout HEAD -- packages/integrations/cloudflare/', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    }
     
   } catch (error) {
+    // Restore upstream on error
+    console.log('🔄 Restoring upstream due to error...')
+    try {
+      execSync('git checkout HEAD -- packages/integrations/cloudflare/', { cwd: astroUpstreamDir, stdio: 'inherit' })
+    } catch (restoreError) {
+      console.warn('⚠️ Failed to restore upstream:', restoreError.message)
+    }
     console.error('❌ Error applying Cloudflare WebSocket patch:', error.message)
     throw error
   }
@@ -167,33 +154,14 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
       "serverEntrypoint: 'zastro-websockets-cloudflare/entrypoints/server.js'"
     )
     
-    // Add type casting to fix compatibility issues
-    adapterContent = adapterContent.replace(
-      /cloudflareModulePlugin,/g,
-      'cloudflareModulePlugin as any,'
-    )
-    
-    adapterContent = adapterContent.replace(
-      /_config = config;/g,
-      '_config = config as any;'
-    )
+    // Note: Type casting removed - using identical dependency versions from upstream
+    // should eliminate type compatibility issues
     
     writeFileSync(indexPath, adapterContent)
   }
   
-  // Fix handler.ts @ts-expect-error issue
-  const handlerPath = join(localCloudflareDir, 'src/utils/handler.ts')
-  if (existsSync(handlerPath)) {
-    let handlerContent = readFileSync(handlerPath, 'utf-8')
-    
-    // Remove unused @ts-expect-error directive
-    handlerContent = handlerContent.replace(
-      /\/\/ @ts-expect-error - It is safe to expect the error here\.\n/g,
-      ''
-    )
-    
-    writeFileSync(handlerPath, handlerContent)
-  }
+  // Note: handler.ts should already have @ts-expect-error for cloudflare:workers import
+  // This import is runtime-only and the original file has the correct comment
   
   // Fix image-config.ts package references and type issues
   const imageConfigPath = join(localCloudflareDir, 'src/utils/image-config.ts')
@@ -216,11 +184,8 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
       'export function setImageConfig('
     )
     
-    // Add explicit return type to fix the inferred type issue
-    imageConfigContent = imageConfigContent.replace(
-      /\) \{/,
-      '): any {'
-    )
+    // Note: Explicit 'any' return type removed - proper ImageConfig types 
+    // should be available with identical dependency versions
     
     writeFileSync(imageConfigPath, imageConfigContent)
   }
@@ -242,6 +207,16 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
       'return String(options.src);'
     )
     
+    // Fix lines 20-21: cast options.src to string when used
+    imageServiceContent = imageServiceContent.replace(
+      /} else if \(isRemoteAllowed\(options\.src, imageConfig\)\) \{/,
+      '} else if (isRemoteAllowed(options.src, imageConfig)) {'
+    )
+    imageServiceContent = imageServiceContent.replace(
+      /imageSource = options\.src;/g,
+      'imageSource = String(options.src);'
+    )
+    
     writeFileSync(imageServicePath, imageServiceContent)
   }
   
@@ -250,95 +225,64 @@ function applyAllPatchModifications(localCloudflareDir: string, rootDir: string)
   if (existsSync(serverPath)) {
     let serverContent = readFileSync(serverPath, 'utf-8')
     
-    // Add type casting to fix SSRManifest compatibility
-    serverContent = serverContent.replace(
-      /const app = new App\(manifest\);/,
-      'const app = new App(manifest as any);'
-    )
-    
-    // Also fix the handle function call with type casting
-    serverContent = serverContent.replace(
-      /return await handle\(manifest, app, request, env, context\);/,
-      'return await handle(manifest as any, app, request, env, context);'
-    )
+    // Note: SSRManifest type casting removed - identical dependency versions 
+    // should ensure compatible SSRManifest types between App constructor and handle function
     
     writeFileSync(serverPath, serverContent)
   }
 }
 
-function updateLocalPackageJson(localCloudflareDir: string, rootDir: string): void {
-  const packageJsonPath = join(localCloudflareDir, 'package.json')
+function updateUpstreamPackageJson(upstreamCloudflareDir: string): void {
+  const packageJsonPath = join(upstreamCloudflareDir, 'package.json')
   const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
   
-  // Update package name
-  packageJson.name = 'zastro-websockets-cloudflare'
-  
-  // Add websocket export to match patch exactly
-  if (!packageJson.exports) {
-    packageJson.exports = {}
-  }
-  
-  // Ensure the websocket export is added as per the patch
+  // Only add the websocket export - keep everything else unchanged
   packageJson.exports['./websocket'] = './dist/websocket/index.js'
   
-  // Convert workspace dependencies to regular dependency versions using upstream versions
-  if (packageJson.dependencies) {
-    if (packageJson.dependencies['@astrojs/internal-helpers']) {
-      const internalHelpersVersion = JSON.parse(
-        readFileSync(join(rootDir, 'astro-upstream/packages/internal-helpers/package.json'), 'utf-8')
-      ).version
-      packageJson.dependencies['@astrojs/internal-helpers'] = `^${internalHelpersVersion}`
-    }
-    if (packageJson.dependencies['@astrojs/underscore-redirects']) {
-      const underscoreRedirectsVersion = JSON.parse(
-        readFileSync(join(rootDir, 'astro-upstream/packages/underscore-redirects/package.json'), 'utf-8')
-      ).version
-      packageJson.dependencies['@astrojs/underscore-redirects'] = `^${underscoreRedirectsVersion}`
-    }
-  }
-  
-  if (packageJson.devDependencies) {
-    delete packageJson.devDependencies['astro']
-    delete packageJson.devDependencies['astro-scripts']
-  }
-  
-  // Update build scripts to not use astro-scripts
-  if (packageJson.scripts) {
-    packageJson.scripts.build = 'tsc'
-    packageJson.scripts.dev = 'tsc --watch'
-    delete packageJson.scripts['build:ci']
-    delete packageJson.scripts.test
-  }
-  
   writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
-  
-  // Create a proper tsconfig.json for standalone build
-  const tsconfigPath = join(localCloudflareDir, 'tsconfig.json')
-  const tsconfig = {
-    compilerOptions: {
-      target: 'ES2021',
-      lib: ['ES2021', 'WebWorker'],
-      module: 'ESNext',
-      moduleResolution: 'bundler',
-      strict: false,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      declaration: true,
-      outDir: './dist',
-      rootDir: './src',
-      allowSyntheticDefaultImports: true,
-      resolveJsonModule: true,
-      types: ['@cloudflare/workers-types'],
-      noUnusedLocals: false,
-      noUnusedParameters: false,
-      noImplicitAny: false
+  console.log('✅ Added websocket export to upstream package.json')
+}
+
+function createFinalPackageJson(finalCloudflareDir: string): void {
+  const packageJson = {
+    name: 'zastro-websockets-cloudflare',
+    description: 'Deploy your site to Cloudflare Workers/Pages with WebSocket support',
+    version: '12.6.0',
+    type: 'module',
+    types: './dist/index.d.ts',
+    author: 'withastro',
+    license: 'MIT',
+    repository: {
+      type: 'git',
+      url: 'https://github.com/zach-planet-nine/ZAstroWebsockets.git'
     },
-    include: ['src/**/*'],
-    exclude: ['node_modules', 'dist', 'test']
+    keywords: [
+      'withastro',
+      'astro-adapter',
+      'websockets',
+      'cloudflare'
+    ],
+    exports: {
+      '.': './dist/index.js',
+      './entrypoints/server.js': './dist/entrypoints/server.js',
+      './entrypoints/middleware.js': './dist/entrypoints/middleware.js',
+      './image-service': './dist/entrypoints/image-service.js',
+      './image-endpoint': './dist/entrypoints/image-endpoint.js',
+      './handler': './dist/utils/handler.js',
+      './websocket': './dist/websocket/index.js',
+      './package.json': './package.json'
+    },
+    files: [
+      'dist'
+    ],
+    peerDependencies: {
+      'astro': '^5.0.0'
+    }
   }
   
-  writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2) + '\n')
+  const packageJsonPath = join(finalCloudflareDir, 'package.json')
+  writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
+  console.log('✅ Created final package.json for zastro-websockets-cloudflare')
 }
 
 function createCloudflareWebSocketFiles(websocketDir: string): void {
@@ -365,7 +309,7 @@ export interface WebSocketUpgrade {
 
 export class WebSocket extends EventTarget {
   private _ws: CloudflareWebSocket | undefined
-  private _readyState: number = WebSocket.CONNECTING
+  private _readyState: number = 0 // Use numeric literal instead of static property
   private _binaryType: 'blob' | 'arraybuffer' = 'blob'
   private _url: string = ''
   private _protocol: string = ''
@@ -378,10 +322,10 @@ export class WebSocket extends EventTarget {
   static readonly CLOSED     = 3 as const
 
   // Instance constants
-  declare readonly CONNECTING: 0
-  declare readonly OPEN      : 1
-  declare readonly CLOSING   : 2
-  declare readonly CLOSED    : 3
+  readonly CONNECTING: 0 = 0
+  readonly OPEN: 1 = 1
+  readonly CLOSING: 2 = 2
+  readonly CLOSED: 3 = 3
 
   // Event handlers
   onopen: ((event: Event) => void) | null = null
@@ -455,18 +399,6 @@ export class WebSocket extends EventTarget {
     }
   }
 
-  static {
-    Object.assign(this.prototype, {
-      CONNECTING: 0,
-      OPEN      : 1,
-      CLOSING   : 2,
-      CLOSED    : 3
-    })
-
-    // Freeze the prototype and class to align with the spec
-    Object.freeze(this.prototype)
-    Object.freeze(this)
-  }
 }
 
 // WeakMap to store private Cloudflare WebSocket instances
@@ -478,8 +410,10 @@ export function attach(standard: WebSocket, cfWebSocket: CloudflareWebSocket): v
   }
 
   wsMap.set(standard, cfWebSocket)
-  ;(standard as any)._ws = cfWebSocket
-  ;(standard as any)._readyState = WebSocket.OPEN
+  
+  // Set private properties using Object.defineProperty for type safety
+  Object.defineProperty(standard, '_ws', { value: cfWebSocket, writable: true })
+  Object.defineProperty(standard, '_readyState', { value: WebSocket.OPEN, writable: true })
 
   // Set up event forwarding
   cfWebSocket.addEventListener('message', (event: { data: any }) => {
@@ -489,7 +423,8 @@ export function attach(standard: WebSocket, cfWebSocket: CloudflareWebSocket): v
   })
 
   cfWebSocket.addEventListener('close', (event: { code: number; reason: string; wasClean: boolean }) => {
-    ;(standard as any)._readyState = WebSocket.CLOSED
+    // Update readyState safely using Object.assign
+    Object.assign(standard, { _readyState: WebSocket.CLOSED })
     const closeEvent = new CloseEvent('close', {
       code: event.code,
       reason: event.reason,
@@ -499,7 +434,7 @@ export function attach(standard: WebSocket, cfWebSocket: CloudflareWebSocket): v
     standard.dispatchEvent(closeEvent)
   })
 
-  cfWebSocket.addEventListener('error', (event: any) => {
+  cfWebSocket.addEventListener('error', (_event: any) => {
     const errorEvent = new ErrorEvent('error', { message: 'WebSocket error' })
     standard.onerror?.(errorEvent)
     standard.dispatchEvent(errorEvent)
@@ -562,6 +497,34 @@ interface CloudflareWebSocket {
 
 import { WebSocket, attach } from './websocket.js'
 
+// Cloudflare Workers type declarations
+declare global {
+  var WebSocketPair: {
+    new (): {
+      0: CloudflareWebSocket
+      1: CloudflareWebSocket
+    }
+  }
+  
+  interface CloudflareWebSocket {
+    send(data: string | ArrayBufferLike | ArrayBufferView): void
+    close(code?: number, reason?: string): void
+    accept(): void
+    addEventListener(type: 'message', listener: (event: { data: any }) => void): void
+    addEventListener(type: 'close', listener: (event: { code: number; reason: string; wasClean: boolean }) => void): void
+    addEventListener(type: 'error', listener: (event: any) => void): void
+    addEventListener(type: 'open', listener: (event: any) => void): void
+    removeEventListener(type: string, listener: any): void
+    readonly readyState: number
+    readonly url: string
+  }
+}
+
+// Extend ResponseInit to include Cloudflare's webSocket property
+interface CloudflareResponseInit extends ResponseInit {
+  webSocket?: CloudflareWebSocket
+}
+
 export interface CloudflareLocals {
   isUpgradeRequest: boolean
   upgradeWebSocket(): { socket: WebSocket, response: Response }
@@ -594,7 +557,7 @@ export const onRequest = async function cloudflareWebSocketMiddleware(
 
     // Create WebSocket pair for Cloudflare
     const webSocketPair = new WebSocketPair()
-    const [client, server] = Object.values(webSocketPair)
+    const [client, server] = [webSocketPair[0], webSocketPair[1]]
 
     // Create our WebSocket wrapper
     const socket = new WebSocket(request.url)
@@ -611,7 +574,7 @@ export const onRequest = async function cloudflareWebSocketMiddleware(
         'Connection': 'Upgrade',
       },
       webSocket: client,
-    })
+    } as CloudflareResponseInit)
 
     return { socket, response }
   }
@@ -629,6 +592,39 @@ export const onRequest = async function cloudflareWebSocketMiddleware(
 import type { App } from 'astro/app'
 import { WebSocket, attach } from './websocket.js'
 
+// Cloudflare Workers type declarations
+declare global {
+  var WebSocketPair: {
+    new (): {
+      0: CloudflareWebSocket
+      1: CloudflareWebSocket
+    }
+  }
+  
+  interface CloudflareWebSocket {
+    send(data: string | ArrayBufferLike | ArrayBufferView): void
+    close(code?: number, reason?: string): void
+    accept(): void
+    addEventListener(type: 'message', listener: (event: { data: any }) => void): void
+    addEventListener(type: 'close', listener: (event: { code: number; reason: string; wasClean: boolean }) => void): void
+    addEventListener(type: 'error', listener: (event: any) => void): void
+    addEventListener(type: 'open', listener: (event: any) => void): void
+    removeEventListener(type: string, listener: any): void
+    readonly readyState: number
+    readonly url: string
+  }
+}
+
+// Extend Request to include Cloudflare's cf property
+interface CloudflareRequest extends Request {
+  cf: any
+}
+
+// Extend ResponseInit to include Cloudflare's webSocket property
+interface CloudflareResponseInit extends ResponseInit {
+  webSocket?: CloudflareWebSocket
+}
+
 export type CloudflareApp = App
 
 export function createWebSocketHandler(app: CloudflareApp) {
@@ -644,7 +640,7 @@ export function createWebSocketHandler(app: CloudflareApp) {
 
     // Create WebSocket pair for Cloudflare
     const webSocketPair = new WebSocketPair()
-    const [client, server] = Object.values(webSocketPair)
+    const [client, server] = [webSocketPair[0], webSocketPair[1]]
 
     // Render the Astro page with WebSocket support
     const response = await app.render(request, {
@@ -666,15 +662,15 @@ export function createWebSocketHandler(app: CloudflareApp) {
               'Connection': 'Upgrade',
             },
             webSocket: client,
-          })
+          } as CloudflareResponseInit)
 
           return { socket, response: upgradeResponse }
         },
         runtime: {
           env,
-          cf: request.cf,
+          cf: (request as CloudflareRequest).cf,
           ctx,
-          caches: (globalThis as any).caches,
+          caches: globalThis.caches,
           waitUntil: (promise: Promise<any>) => ctx.waitUntil(promise),
         },
       },
@@ -694,7 +690,7 @@ export function createWebSocketHandler(app: CloudflareApp) {
           'Connection': 'Upgrade',
         },
         webSocket: client,
-      })
+      } as CloudflareResponseInit)
     }
 
     return response
