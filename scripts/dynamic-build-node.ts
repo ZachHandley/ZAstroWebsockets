@@ -409,13 +409,22 @@ export class UpgradeResponse extends Response {
     readonly status = 101
 
     constructor() {
+        // Node.js undici doesn't allow status 101, so use 200 and override
         super(null, {
-            status: 101,
+            status: 200,
             statusText: "Switching Protocols",
             headers: {
                 "Upgrade": "websocket",
                 "Connection": "Upgrade"
             }
+        })
+        
+        // Override status to 101 after construction
+        Object.defineProperty(this, 'status', {
+            value: 101,
+            writable: false,
+            enumerable: true,
+            configurable: false
         })
     }
 }
