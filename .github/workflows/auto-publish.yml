@@ -123,18 +123,18 @@ jobs:
             local existing_tags=$(git tag --list | grep "^${package_name}-v${base_version}" | sort -V)
             
             if [[ -z "$existing_tags" ]]; then
-              # No existing tags, start with .1
-              echo "${base_version}.1"
+              # No existing tags, start with -1
+              echo "${base_version}-1"
             else
               # Get the highest patch number
-              local highest_patch=$(echo "$existing_tags" | sed "s/^${package_name}-v${base_version}\.*//" | sed 's/^${base_version}//' | sed 's/^\.//' | sort -n | tail -1)
+              local highest_patch=$(echo "$existing_tags" | sed "s/^${package_name}-v${base_version}-//" | sed 's/^${base_version}//' | sed 's/^-//' | sort -n | tail -1)
               if [[ -z "$highest_patch" || "$highest_patch" == "$base_version" ]]; then
-                # No patch number found, start with .1
-                echo "${base_version}.1"
+                # No patch number found, start with -1
+                echo "${base_version}-1"
               else
                 # Increment the patch number
                 local next_patch=$((highest_patch + 1))
-                echo "${base_version}.${next_patch}"
+                echo "${base_version}-${next_patch}"
               fi
             fi
           }
