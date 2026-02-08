@@ -256,7 +256,7 @@ import { createWebsocketHandler } from './websocket/serve-websocket.js';`
       /return\s*{\s*options:\s*options,\s*handler:\s*options\.mode\s*===\s*['"]middleware['"][\s\S]*?startServer:\s*\(\)\s*=>\s*startServer\(app,\s*options\),?\s*};/s,
       `return {
 		options: options,
-		handler: options.mode === 'middleware' ? createMiddleware(app) : createStandaloneHandler(app, options),
+		handler: options.mode === 'middleware' ? createMiddleware(app, options) : createStandaloneHandler(app, options),
 		startServer: () => startServer(app, options),
 		websocketHandler: createWebsocketHandler(app)
 	};`

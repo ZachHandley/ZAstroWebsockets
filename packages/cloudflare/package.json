@@ -1,7 +1,7 @@
 {
   "name": "zastro-websockets-cloudflare",
   "description": "Deploy your site to Cloudflare Workers/Pages with WebSocket support",
-  "version": "12.6.0",
+  "version": "12.6.12",
   "type": "module",
   "types": "./dist/index.d.ts",
   "author": "Zach Handley <zach@zachhandley.com>",
@@ -32,14 +32,14 @@
     "dist"
   ],
   "dependencies": {
-    "@astrojs/internal-helpers": "^0.6.1",
+    "@astrojs/internal-helpers": "^0.7.5",
     "@astrojs/underscore-redirects": "^1.0.0",
-    "@cloudflare/workers-types": "^4.20250507.0",
-    "tinyglobby": "^0.2.13",
-    "vite": "^6.3.5",
-    "wrangler": "^4.14.1"
+    "@cloudflare/workers-types": "^4.20260116.0",
+    "tinyglobby": "^0.2.15",
+    "vite": "^6.4.1",
+    "wrangler": "4.59.2"
   },
   "peerDependencies": {
-    "astro": "^5.0.0"
+    "astro": "^5.7.0"
   }
 }

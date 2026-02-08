@@ -25,6 +25,7 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+          token: ${{ secrets.FORGEJO_TOKEN }}
 
       - name: Check submodule changes and version
         id: check
@@ -32,26 +33,26 @@ jobs:
           # Get our repo's latest commit hash
           OUR_COMMIT=$(git rev-parse HEAD | cut -c1-7)
           echo "Our repo commit: $OUR_COMMIT"
-          
+
           # Get Astro version from submodule package.json
           cd astro-upstream
           git fetch --tags
-          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | sort -V | tail -1)
+          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | grep -v -- '-' | sort -V | tail -1)
           echo "Latest Astro tag: $LATEST_ASTRO_TAG"
           git checkout "$LATEST_ASTRO_TAG"
           ASTRO_VERSION=$(node -p "require('./package.json').version")
           echo "Astro version: $ASTRO_VERSION"
           cd ..
-          
+
           # Generate new version: Astro version + our commit hash
           NEW_VERSION="${ASTRO_VERSION}-${OUR_COMMIT}"
           echo "Proposed new version: $NEW_VERSION"
-          
+
           # Check if we need to publish by looking at built packages
           # We'll check after building to see if individual package versions exist
           echo "Will check individual package versions after build"
           echo "should-publish=true" >> $GITHUB_OUTPUT
-          
+
           echo "astro-version=$ASTRO_VERSION" >> $GITHUB_OUTPUT
           echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
@@ -64,6 +65,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+          token: ${{ secrets.FORGEJO_TOKEN }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -75,15 +78,15 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
 
       - name: Initialize submodule and update to latest Astro tag
         run: |
           git submodule update --init --recursive
           cd astro-upstream
           git fetch --tags
-          # Get the latest astro@* tag and checkout to it
-          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | sort -V | tail -1)
+          # Get the latest stable astro@* tag (exclude prereleases)
+          LATEST_ASTRO_TAG=$(git tag -l "astro@*" | grep -v -- '-' | sort -V | tail -1)
           echo "Updating to latest Astro tag: $LATEST_ASTRO_TAG"
           git checkout "$LATEST_ASTRO_TAG"
           cd ..
@@ -94,11 +97,11 @@ jobs:
         run: |
           echo "Building adapters with dynamic build system..."
           pnpm run build
-          
+
           echo "Testing both adapters..."
           pnpm run test
 
-# Version handling is done in the packages themselves, not root package.json
+      # Version handling is done in the packages themselves, not root package.json
 
       - name: Final build
         run: |
@@ -110,18 +113,18 @@ jobs:
           # Get the base package versions from built packages
           NODE_BASE_VERSION=$(node -p "require('./packages/node/package.json').version")
           CLOUDFLARE_BASE_VERSION=$(node -p "require('./packages/cloudflare/package.json').version")
-          
+
           echo "Node base version: $NODE_BASE_VERSION"
           echo "Cloudflare base version: $CLOUDFLARE_BASE_VERSION"
-          
+
           # Function to get next incremental version
           get_next_version() {
             local base_version=$1
             local package_name=$2
-            
+
             # Find existing tags for this base version
             local existing_tags=$(git tag --list | grep "^${package_name}-v${base_version}" | sort -V)
-            
+
             if [[ -z "$existing_tags" ]]; then
               # No existing tags, start with -1
               echo "${base_version}-1"
@@ -138,18 +141,18 @@ jobs:
               fi
             fi
           }
-          
+
           # Get incremental versions
           NODE_VERSION=$(get_next_version "$NODE_BASE_VERSION" "node")
           CLOUDFLARE_VERSION=$(get_next_version "$CLOUDFLARE_BASE_VERSION" "cloudflare")
-          
+
           echo "Node incremental version: $NODE_VERSION"
           echo "Cloudflare incremental version: $CLOUDFLARE_VERSION"
-          
+
           # Check if these specific incremental versions already exist
           NODE_TAG_EXISTS=$(git tag --list | grep -q "^node-v${NODE_VERSION}$" && echo "true" || echo "false")
           CLOUDFLARE_TAG_EXISTS=$(git tag --list | grep -q "^cloudflare-v${CLOUDFLARE_VERSION}$" && echo "true" || echo "false")
-          
+
           if [[ "$NODE_TAG_EXISTS" == "true" && "$CLOUDFLARE_TAG_EXISTS" == "true" ]]; then
             echo "Both incremental versions already exist, skipping publish"
             echo "should-publish=false" >> $GITHUB_OUTPUT
@@ -157,7 +160,7 @@ jobs:
             echo "New incremental versions found, will publish"
             echo "should-publish=true" >> $GITHUB_OUTPUT
           fi
-          
+
           echo "node-version=$NODE_VERSION" >> $GITHUB_OUTPUT
           echo "cloudflare-version=$CLOUDFLARE_VERSION" >> $GITHUB_OUTPUT
 
@@ -166,7 +169,7 @@ jobs:
         run: |
           NODE_VERSION="${{ steps.versions.outputs.node-version }}"
           CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
-          
+
           # Update node package version
           node -e "
             const pkg = JSON.parse(require('fs').readFileSync('packages/node/package.json', 'utf8'));
@@ -174,7 +177,7 @@ jobs:
             require('fs').writeFileSync('packages/node/package.json', JSON.stringify(pkg, null, 2) + '\n');
             console.log('Updated packages/node/package.json to version $NODE_VERSION');
           "
-          
+
           # Update cloudflare package version
           node -e "
             const pkg = JSON.parse(require('fs').readFileSync('packages/cloudflare/package.json', 'utf8'));
@@ -187,17 +190,17 @@ jobs:
         if: steps.versions.outputs.should-publish == 'true'
         run: pnpm run publish:packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
 
-      - name: Create release branches and tags for each package
+      - name: Create release branches and tags
         if: steps.versions.outputs.should-publish == 'true'
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
+          git config --local user.email "ci@forge.blackleafdigital.com"
+          git config --local user.name "Forgejo CI"
+
           NODE_VERSION="${{ steps.versions.outputs.node-version }}"
           CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
-          
+
           # Create release branch for Node.js package
           NODE_BRANCH="releases/node-v$NODE_VERSION"
           git checkout -b "$NODE_BRANCH"
@@ -206,7 +209,7 @@ jobs:
           git push origin "$NODE_BRANCH"
           git tag "node-v$NODE_VERSION"
           git push origin "node-v$NODE_VERSION"
-          
+
           # Switch back to main and create release branch for Cloudflare package
           git checkout main
           CLOUDFLARE_BRANCH="releases/cloudflare-v$CLOUDFLARE_VERSION"
@@ -217,38 +220,52 @@ jobs:
           git tag "cloudflare-v$CLOUDFLARE_VERSION"
           git push origin "cloudflare-v$CLOUDFLARE_VERSION"
 
-      - name: Create GitHub releases for each package
+      - name: Create Forgejo releases
         if: steps.versions.outputs.should-publish == 'true'
         run: |
+          FORGEJO_URL="${{ github.server_url }}"
+          REPO="${{ github.repository }}"
           NODE_VERSION="${{ steps.versions.outputs.node-version }}"
           CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
-          
+          ASTRO_VERSION="${{ needs.check-submodule.outputs.astro-version }}"
+
           # Create release for Node.js package
-          gh release create "node-v$NODE_VERSION" \
-            --title "Node.js Adapter v$NODE_VERSION" \
-            --notes "## Changes
-          - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
-          - Synced with upstream Astro repository
-          - Tested Node.js adapter functionality
-          
-          ## Installation
-          \`\`\`bash
-          npm install zastro-websockets-node@$NODE_VERSION
-          \`\`\`" \
-            --target "releases/node-v$NODE_VERSION"
-          
+          curl -s -X POST "${FORGEJO_URL}/api/v1/repos/${REPO}/releases" \
+            -H "Authorization: token ${{ secrets.FORGEJO_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"node-v${NODE_VERSION}\",
+              \"name\": \"Node.js Adapter v${NODE_VERSION}\",
+              \"body\": \"## Changes\n- Updated to Astro ${ASTRO_VERSION}\n- Synced with upstream Astro repository\n- Tested Node.js adapter functionality\n\n## Installation\n\\\`\\\`\\\`bash\nnpm install zastro-websockets-node@${NODE_VERSION}\n\\\`\\\`\\\`\",
+              \"target_commitish\": \"releases/node-v${NODE_VERSION}\"
+            }"
+
           # Create release for Cloudflare package
-          gh release create "cloudflare-v$CLOUDFLARE_VERSION" \
-            --title "Cloudflare Adapter v$CLOUDFLARE_VERSION" \
-            --notes "## Changes
-          - Updated to Astro ${{ needs.check-submodule.outputs.astro-version }}
-          - Synced with upstream Astro repository  
-          - Tested Cloudflare adapter functionality
-          
-          ## Installation
-          \`\`\`bash
-          npm install zastro-websockets-cloudflare@$CLOUDFLARE_VERSION
-          \`\`\`" \
-            --target "releases/cloudflare-v$CLOUDFLARE_VERSION"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          curl -s -X POST "${FORGEJO_URL}/api/v1/repos/${REPO}/releases" \
+            -H "Authorization: token ${{ secrets.FORGEJO_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"cloudflare-v${CLOUDFLARE_VERSION}\",
+              \"name\": \"Cloudflare Adapter v${CLOUDFLARE_VERSION}\",
+              \"body\": \"## Changes\n- Updated to Astro ${ASTRO_VERSION}\n- Synced with upstream Astro repository\n- Tested Cloudflare adapter functionality\n\n## Installation\n\\\`\\\`\\\`bash\nnpm install zastro-websockets-cloudflare@${CLOUDFLARE_VERSION}\n\\\`\\\`\\\`\",
+              \"target_commitish\": \"releases/cloudflare-v${CLOUDFLARE_VERSION}\"
+            }"
+
+      - name: Sync to GitHub mirror
+        if: always()
+        run: |
+          git remote add github "https://x-access-token:${{ secrets.GITHUB_MIRROR_TOKEN }}@github.com/ZachHandley/ZAstroWebsockets.git" 2>/dev/null || true
+          # Push main branch
+          git checkout main
+          git push github main --force
+          # Push all tags
+          git push github --tags --force
+          # Push release branches if they were created
+          NODE_VERSION="${{ steps.versions.outputs.node-version }}"
+          CLOUDFLARE_VERSION="${{ steps.versions.outputs.cloudflare-version }}"
+          if [[ -n "$NODE_VERSION" ]]; then
+            git push github "releases/node-v$NODE_VERSION" 2>/dev/null || true
+          fi
+          if [[ -n "$CLOUDFLARE_VERSION" ]]; then
+            git push github "releases/cloudflare-v$CLOUDFLARE_VERSION" 2>/dev/null || true
+          fi
