@@ -28,7 +28,8 @@
     "@types/node": "^24.0.14",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "ws": "^8.18.3"
   },
   "scripts": {
     "reset": "tsx --no-cache scripts/reset-submodule.ts",

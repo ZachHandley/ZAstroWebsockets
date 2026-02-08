@@ -1,7 +1,7 @@
 {
   "name": "zastro-websockets-cloudflare",
   "description": "Deploy your site to Cloudflare Workers/Pages with WebSocket support",
-  "version": "0.0.0-e6992d0",
+  "version": "12.6.0",
   "type": "module",
   "types": "./dist/index.d.ts",
   "author": "Zach Handley <zach@zachhandley.com>",
@@ -23,7 +23,10 @@
     "./image-endpoint": "./dist/entrypoints/image-endpoint.js",
     "./handler": "./dist/utils/handler.js",
     "./package.json": "./package.json",
-    "./websocket": "./dist/websocket/index.js"
+    "./websocket": "./dist/websocket/index.js",
+    "./websocket/middleware.js": "./dist/websocket/middleware.js",
+    "./websocket/websocket.js": "./dist/websocket/websocket.js",
+    "./websocket/server.js": "./dist/websocket/server.js"
   },
   "files": [
     "dist"
